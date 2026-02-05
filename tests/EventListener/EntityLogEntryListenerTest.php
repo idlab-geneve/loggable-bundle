@@ -25,7 +25,7 @@ class EntityLogEntryListenerTest extends TestCase
         $security = $kernel->getContainer()->get('security.token_storage');
         $user = new DummyUser('idlab_test', 'password', ['ROLE_USER']);
 
-        $token = new UsernamePasswordToken($user, 'password', 'main', $user->getRoles());
+        $token = new UsernamePasswordToken($user, 'main', $user->getRoles());
         $security->setToken($token);
 
         $entity = new DummyEntity();
