@@ -2,6 +2,7 @@
 
 namespace Idlab\Loggable\EventListener;
 
+use Idlab\Loggable\Config\IdlabLoggableConfig;
 use Idlab\Loggable\Entity\EntityLogEntry;
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
@@ -11,17 +12,13 @@ use Doctrine\ORM\Mapping\ClassMetadataInfo;
 #[AsDoctrineListener(event: Events::loadClassMetadata)]
 class TablePrefixListener
 {
-    private array $config;
+    public function __construct(private readonly IdlabLoggableConfig $config) {}
 
-    public function setConfig(array $config): void
-    {
-        $this->config = $config;
-    }
 
     public function loadClassMetadata(LoadClassMetadataEventArgs $eventArgs): void
     {
         $classMetadata = $eventArgs->getClassMetadata();
-        $addPrefix     = EntityLogEntry::class === $classMetadata->getName();
+        $addPrefix = EntityLogEntry::class === $classMetadata->getName();
 
         if (!$addPrefix) {
             return;
@@ -35,7 +32,7 @@ class TablePrefixListener
 
         foreach ($classMetadata->getAssociationMappings() as $fieldName => $mapping) {
             if (ClassMetadataInfo::MANY_TO_MANY === $mapping['type'] && $mapping['isOwningSide']) {
-                $mappedTableName                                                     = $mapping['joinTable']['name'];
+                $mappedTableName = $mapping['joinTable']['name'];
                 $classMetadata->associationMappings[$fieldName]['joinTable']['name'] = $this->getPrefix() . $mappedTableName;
             }
         }
@@ -43,6 +40,6 @@ class TablePrefixListener
 
     private function getPrefix(): string
     {
-        return $this->config['idlab_loggable'] ?? '';
+        return $this->config->tablePrefix ?? '';
     }
 }

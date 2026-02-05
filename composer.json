@@ -1,7 +1,7 @@
 {
     "name": "idlab/loggable",
     "description": "Allows you to log updates occurring on entities",
-    "type": "library",
+    "type": "symfony-bundle",
     "license": "MIT",
     "autoload": {
         "psr-4": {

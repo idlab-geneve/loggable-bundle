@@ -1,35 +1,20 @@
-# Idlab Loggable
-
-## Configuration in services.yaml :
-
-Add the logger listener. Set the connection name as first argument (the default value is 'default') :
-
-    App\Tools\IdlabLoggable\EventListener\EntityLogEntryListener:
-      tags:
-        - name: 'doctrine.orm.entity_listener'
-      arguments: ['eco21_logs']
-
-By default, the table name is 'entity_log_entries'.
-OPTIONAL : Prefix the table is possible. If you want, you can set the parameter and add the listener in the services.yaml :
-
-    parameters:
-        table_prefix:
-          idlab_loggable: prefix_
-
-    App\Tools\IdlabLoggable\EventListener\TablePrefixListener:
-      tags:
-        - name: 'doctrine.orm.entity_listener'
-      calls:
-        - [ setConfig, [ '%table_prefix%' ] ]
+# Idlab Loggable bundle
 
 ## Configuration in doctrine.yaml
 
 To set under the wished connection configuration :
 
-    IdlabLoggable:
-        dir: '%kernel.project_dir%/src/Tools/IdlabLoggable/Entity'
-        prefix: App\Tools\IdlabLoggable\Entity
+    idlab_loggable:
+        prefix: Idlab\Loggable\Entity
+        dir: "%kernel.project_dir%/vendor/idlab_loggable/src/Entity"
 
-## Table name
+## Package file configuration
 
-The table name can be replaced on the App\Tools\IdlabLoggable\Entity\EntityLogEntry entity. 
+You can add a config file name "idlab_loggable.yaml" in config/packages in you Symfony project : 
+
+    idlab_loggable:
+        enabled: true
+        disallowed_namespaces: []
+        disallowed_classes: []
+        logs_target_connection_name: 'default'
+        table_prefix: 'example_table_prefix'

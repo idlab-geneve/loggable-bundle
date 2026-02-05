@@ -2,6 +2,7 @@
 
 namespace Idlab\Loggable\EventListener;
 
+use Idlab\Loggable\Config\IdlabLoggableConfig;
 use Idlab\Loggable\Entity\EntityLogEntry;
 use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
@@ -33,51 +34,45 @@ class EntityLogEntryListener
     private ?string $impersonatedBy;
 
     public function __construct(
-        public readonly string $logTargetConnectionName = 'default',
-        private readonly ManagerRegistry $registry,
-        private readonly Security $security,
+        private readonly IdlabLoggableConfig     $config,
+        private readonly ManagerRegistry         $registry,
+        private readonly Security                $security,
         public readonly JWTTokenManagerInterface $jWTManager,
-        public readonly TokenStorageInterface $tokenStorageInterface,
+        public readonly TokenStorageInterface    $tokenStorageInterface,
     ) {
-        $this->logsEntityManager       = $this->registry->getManager($logTargetConnectionName);
+        $this->logsEntityManager = $this->registry->getManager($this->config->loginTargetConnectionName);
         $this->identifierConnectedUser = $this->security?->getUser()?->getUserIdentifier();
 
+        // Save the original user if current impersonation and save connected user
         $this->impersonatedBy = null;
         if ($tokenStorageInterface->getToken() instanceof SwitchUserToken) {
-            $originalToken        = $tokenStorageInterface->getToken()?->getOriginalToken();
+            $originalToken = $tokenStorageInterface->getToken()?->getOriginalToken();
             $this->impersonatedBy = $originalToken->getUser()?->getUserIdentifier();
         }
     }
 
     private function getDisallowedNamespaces(): array
     {
-        $disallowedNamespaces = [];
-
-        return $disallowedNamespaces;
+        return $this->config->disallowedNamespaces;
     }
 
     /*
-     * Ne pas oublier d'exclure la classe de Log sur
-     * laquelle on est en train de travailler, sinon
-     * on part dans une boucle infinie...
+     * Don't forget to exclude the EntityLogEntry class
+     * from IdlabLoggable
+     * If you are currently working on, otherwise
+     * you will end up in an infinite loop...
      */
-    private function getDisallowedEntities(): array
+    private function getDisallowedEntitiesClasses(): array
     {
-        /*
-         * Déjà gérés dans l'évaluation du namespace :
-         * - App\EntityLegacyAcc\Common\Logger
-         * - App\EntityLegacyAcc\Immo\ReconciliationLog
-         * - App\EntityLegacyAcc\Plan\ActionLog
-         * - App\EntityLegacyAcc\Plan\DemarcheLog
-         * - App\Entity\EtlLog\EtlDataLog
-         * - App\Entity\EtlLog\EtlJobLog
-         */
-        $entityLogEntryClass =  EntityLogEntry::class;
-        $configuredDisallowedEntities = [];
-
-        return array_merge([$entityLogEntryClass], $configuredDisallowedEntities);
+        return array_merge(
+            [EntityLogEntry::class],
+            $this->config->disallowedClasses
+        );
     }
 
+    /*
+     * Check if we support the entity in order to create logs for it
+     */
     private function supportEntity(string $className): bool
     {
         $disallowedNamespaces = $this->getDisallowedNamespaces();
@@ -87,39 +82,38 @@ class EntityLogEntryListener
             }
         }
 
-        return !in_array($className, $this->getDisallowedEntities(), true);
+        return !in_array($className, $this->getDisallowedEntitiesClasses(), true);
     }
 
     /*
-     * Ici, évaluer si la propriété a l'attribut "IdlabLoggable"
-     * afin de savoir si on peut la version ou non
+     * Here, evaluate whether the property has the “IdlabLoggable” attribute
+     * in order to determine whether it can be versioned
      */
     private function supportProperty(string $evaluatedPropertyName, string $evaluatedClassName): bool
     {
-        $property                = new \ReflectionProperty($evaluatedClassName, $evaluatedPropertyName);
+        $property = new \ReflectionProperty($evaluatedClassName, $evaluatedPropertyName);
         $idlabLoggableAttributes = $property->getAttributes(IdlabLoggable::class);
 
         return count($idlabLoggableAttributes) > 0;
     }
 
-    /*
-     * Création d'une nouvelle entité
-     */
     /**
+     *
+     * Creation of a new entity
      * @throws EntityNotFoundException
      * @throws \JsonException
      */
     public function postPersist(PostPersistEventArgs $args): void
     {
         $currentObject = $args->getObject();
-        $className     = get_class($currentObject);
+        $className = get_class($currentObject);
 
         if (!$this->supportEntity($className)) {
             return;
         }
 
         $defaultUow = $args->getObjectManager()->getUnitOfWork();
-        $data       = $this->manageData($defaultUow, $className, $defaultUow->getEntityChangeSet($currentObject));
+        $data = $this->manageData($defaultUow, $className, $defaultUow->getEntityChangeSet($currentObject));
 
         $newLogEntry = new EntityLogEntry(
             EntityLogEntry::ACTION_CREATE,
@@ -135,13 +129,13 @@ class EntityLogEntryListener
     }
 
     /*
-     * Récupération de l'ID de l'objet supprimé, avant qu'il ne soit plus disponible
-     * dans le postRemove
+     * Retrieving the ID of the deleted object before it is no longer available
+     * in postRemove
      */
     public function preRemove(PreRemoveEventArgs $args): void
     {
         $currentObject = $args->getObject();
-        $className     = get_class($currentObject);
+        $className = get_class($currentObject);
 
         if (!$this->supportEntity($className)) {
             return;
@@ -151,12 +145,12 @@ class EntityLogEntryListener
     }
 
     /*
-     * Suppression d'une entité
+     * When deleting an entity
      */
     public function postRemove(PostRemoveEventArgs $args): void
     {
         $currentObject = $args->getObject();
-        $className     = get_class($currentObject);
+        $className = get_class($currentObject);
 
         if (!$this->supportEntity($className)) {
             return;
@@ -182,12 +176,7 @@ class EntityLogEntryListener
     public function onFlush(OnFlushEventArgs $args): void
     {
         $defaultObjectManager = $args->getObjectManager();
-        $uow                  = $defaultObjectManager->getUnitOfWork();
-
-        // dump('getScheduledEntityInsertions', $uow->getScheduledEntityInsertions());
-        // dump('getScheduledEntityDeletions', $uow->getScheduledEntityDeletions());
-        // dump('getScheduledCollectionDeletions', $uow->getScheduledCollectionDeletions());
-        // dump('getScheduledCollectionUpdates', $uow->getScheduledCollectionUpdates());
+        $uow = $defaultObjectManager->getUnitOfWork();
 
         $data = $entities = [];
         foreach ($uow->getScheduledEntityUpdates() as $entity) {
@@ -196,26 +185,26 @@ class EntityLogEntryListener
                 continue;
             }
 
-            // Champs "plats" et ManyToOne pris en compte
-            $changeset     = $uow->getEntityChangeSet($entity);
+            // "Flat" properties and ManyToOne considered
+            $changeset = $uow->getEntityChangeSet($entity);
             $changeSetData = $this->manageData($uow, $className, $changeset);
 
             if (count($changeSetData) > 0) {
-                $data[$className . '_' . $entity->getId()]     = $changeSetData;
+                $data[$className . '_' . $entity->getId()] = $changeSetData;
                 $entities[$className . '_' . $entity->getId()] = $entity;
             }
         }
 
-        // Collections modifiées (ajout / suppression partielle)
+        // Updated collection (add or remove item)
         foreach ($uow->getScheduledCollectionUpdates() as $collection) {
             $owner = $collection->getOwner();
             if (!$owner) {
                 continue;
             }
             $ownerClassName = get_class($owner);
-            $mapping        = $collection->getMapping();
-            $ownerKey       = $ownerClassName . '_' . $owner->getId();
-            $fieldName      = $mapping['fieldName'];
+            $mapping = $collection->getMapping();
+            $ownerKey = $ownerClassName . '_' . $owner->getId();
+            $fieldName = $mapping['fieldName'];
 
             if ($collection->getInsertDiff() || $collection->getDeleteDiff()) {
                 $entities[$ownerKey] = $owner;
@@ -234,26 +223,26 @@ class EntityLogEntryListener
             }
         }
 
-        // Collections supprimées entièrement (clear(), orphanRemoval, etc.)
+        // Collection completely removed (clear(), orphanRemoval, etc...)
         foreach ($uow->getScheduledCollectionDeletions() as $collection) {
             $owner = $collection->getOwner();
             if (!$owner) {
                 continue;
             }
             $ownerClassName = get_class($owner);
-            $mapping        = $collection->getMapping();
-            $ownerKey       = $ownerClassName . '_' . $owner->getId();
-            $fieldName      = $mapping['fieldName'];
+            $mapping = $collection->getMapping();
+            $ownerKey = $ownerClassName . '_' . $owner->getId();
+            $fieldName = $mapping['fieldName'];
 
-            // ici, la collection est devenue VIDE
-            $entities[$ownerKey]         = $owner;
+            // Here, collection became EMPTY
+            $entities[$ownerKey] = $owner;
             $data[$ownerKey][$fieldName] = [];
         }
 
         if (count($data) > 0) {
             foreach ($data as $key => $value) {
                 $loggedEntity = $entities[$key];
-                $className    = get_class($loggedEntity);
+                $className = get_class($loggedEntity);
 
                 $newLogEntry = new EntityLogEntry(
                     EntityLogEntry::ACTION_UPDATE,
@@ -285,7 +274,7 @@ class EntityLogEntryListener
             [$before, $after] = [$change[0], $change[1]];
 
             $beforeNormalized = $this->normalizeValue($uow, $before);
-            $afterNormalized  = $this->normalizeValue($uow, $after);
+            $afterNormalized = $this->normalizeValue($uow, $after);
 
             if ($beforeNormalized === $afterNormalized) {
                 unset($changeSet[$key]);
@@ -299,7 +288,7 @@ class EntityLogEntryListener
     }
 
     /*
-     * Normaliser les valeurs afin de comparer les valeurs avec confiance
+     * Normalize the values to compare them with confidence
      */
     /**
      * @throws EntityNotFoundException
@@ -310,41 +299,41 @@ class EntityLogEntryListener
             return null;
         }
 
-        // scalaires
+        // Numeric value
         if (is_numeric($value)) {
             return (string) +$value;
         }
 
-        // DateTime
+        // DateTimeInterface
         if ($value instanceof \DateTimeInterface) {
             return $value->format(\DateTimeInterface::W3C);
         }
 
-        // Entités Doctrine (proxy ou non)
+        // Doctrine entity (proxy or not)
         if (is_object($value) && $uow->isInIdentityMap($value) && $uow->getEntityIdentifier($value)) {
             return [
                 '__entity__' => ClassUtils::getClass($value),
-                'id'         => $uow->getEntityIdentifier($value),
+                'id' => $uow->getEntityIdentifier($value),
             ];
         }
 
-        // Tableaux (JSON, array)
+        // Arrays (JSON or simple array)
         if (is_array($value)) {
             ksort($value);
 
             return array_map(fn($v) => $this->normalizeValue($uow, $v), $value);
         }
 
-        // Objets JSON sérialisables
+        // Serializable JSON object
         if ($value instanceof \JsonSerializable) {
             return $this->normalizeValue($uow, $value->jsonSerialize());
         }
 
-        // Fallback objet générique
+        // Fallback generic object
         if (is_object($value)) {
             return [
                 '__object__' => get_class($value),
-                'hash'       => spl_object_hash($value),
+                'hash' => spl_object_hash($value),
             ];
         }
 
@@ -357,7 +346,7 @@ class EntityLogEntryListener
      */
     private function formatAfterChange(UnitOfWork $uow, mixed $value): mixed
     {
-        // Valeur "flat"
+        // "Flat" value
         if (null === $value || '' === $value || is_numeric($value)) {
             return $value;
         }
@@ -366,24 +355,24 @@ class EntityLogEntryListener
             return $value->format(\DateTimeInterface::W3C);
         }
 
-        // Entités Doctrine (proxy ou non)
+        // Doctrine entity (proxy or not)
         if (is_object($value) && $uow->isInIdentityMap($value)) {
             return $uow->getEntityIdentifier($value);
         }
 
-        // Tableaux (JSON, array)
+        // Arrays (JSON or simple array)
         if (is_array($value)) {
             ksort($value);
 
             return json_encode(array_map(fn($v) => $this->normalizeValue($uow, $v), $value), JSON_THROW_ON_ERROR);
         }
 
-        // Objets JSON sérialisables
+        // Serializable JSON object
         if ($value instanceof \JsonSerializable) {
             return $this->normalizeValue($uow, $value->jsonSerialize());
         }
 
-        // Fallback objet générique
+        // Fallback generic object
         if (is_object($value)) {
             return json_encode($value, JSON_THROW_ON_ERROR);
         }

@@ -1,0 +1,12 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+
+  Idlab\Loggable\EventListener\EntityLogEntryListener:
+    tags:
+      - name: 'doctrine.orm.entity_listener'
+
+  Idlab\Loggable\EventListener\TablePrefixListener:
+    tags:
+      - name: 'doctrine.orm.entity_listener'
