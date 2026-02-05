@@ -1,0 +1,28 @@
+{
+    "name": "idlab/loggable",
+    "description": "Allows you to log updates occurring on entities",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Idlab\\Loggable\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "evlyn-idlab",
+            "email": "evlyn@idlab.ch"
+        }
+    ],
+    "require": {
+        "php": "^7.4 || ^8.0",
+        "symfony/security-bundle": "^5.4",
+        "lexik/jwt-authentication-bundle": "^2.21",
+        "doctrine/annotations": "^2.0"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.93",
+        "doctrine/orm": "^2.20",
+        "doctrine/doctrine-bundle": "^2.13"
+    }
+}
