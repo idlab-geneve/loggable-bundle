@@ -60,6 +60,10 @@ class TestKernel extends Kernel
                             'dir' => __DIR__ . '/../Entity',
                             'prefix' => 'Idlab\\Loggable\\Tests\\Entity',
                         ],
+                        'IdlabLoggableBundle' => [
+                            'dir' => __DIR__ . '/../../src/Entity',
+                            'prefix' => 'Idlab\\Loggable\\Entity',
+                        ],
                     ],
                 ],
             ]);
