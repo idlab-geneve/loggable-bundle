@@ -105,6 +105,10 @@ class EntityLogEntryListener
      */
     public function postPersist(PostPersistEventArgs $args): void
     {
+        if (!$this->config->enabled) {
+            return;
+        }
+
         $currentObject = $args->getObject();
         $className = get_class($currentObject);
 
@@ -134,6 +138,10 @@ class EntityLogEntryListener
      */
     public function preRemove(PreRemoveEventArgs $args): void
     {
+        if (!$this->config->enabled) {
+            return;
+        }
+
         $currentObject = $args->getObject();
         $className = get_class($currentObject);
 
@@ -149,6 +157,10 @@ class EntityLogEntryListener
      */
     public function postRemove(PostRemoveEventArgs $args): void
     {
+        if (!$this->config->enabled) {
+            return;
+        }
+
         $currentObject = $args->getObject();
         $className = get_class($currentObject);
 
@@ -175,6 +187,10 @@ class EntityLogEntryListener
      */
     public function onFlush(OnFlushEventArgs $args): void
     {
+        if (!$this->config->enabled) {
+            return;
+        }
+
         $defaultObjectManager = $args->getObjectManager();
         $uow = $defaultObjectManager->getUnitOfWork();
 

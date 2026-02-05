@@ -3,7 +3,6 @@
 namespace Idlab\Loggable\DependencyInjection;
 
 use Idlab\Loggable\Config\IdlabLoggableConfig;
-use Idlab\Loggable\EventListener\EntityLogEntryListener;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
@@ -21,25 +20,22 @@ class IdlabLoggableExtension extends Extension
             $definition = new Definition(IdlabLoggableConfig::class);
             $definition->setArguments([
                 $config['enabled'],
-                $config['logs_target_connection_name'],
-                $config['table_prefix'],
-                $config['disallowed_namespaces'],
-                $config['disallowed_classes'],
+                $config['logs_target_connection_name'] ?? 'default',
+                $config['table_prefix'] ?? '',
+                $config['disallowed_namespaces'] ?? [],
+                $config['disallowed_classes'] ?? [],
             ]);
 
             // Define where are the YAML files of the bundle
             $loader = new YamlFileLoader(
                 $container,
-                new FileLocator(__DIR__ . '/../Resources/config')
+                new FileLocator(__DIR__ . '/../../Resources/config')
             );
 
             // Load the services for the bundle
             $loader->load('services.yaml');
 
             $container->setDefinition(IdlabLoggableConfig::class, $definition);
-        } else {
-            // Toggle feature here
-            $container->removeDefinition(EntityLogEntryListener::class);
         }
     }
 }

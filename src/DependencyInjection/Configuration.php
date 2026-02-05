@@ -21,7 +21,6 @@ class Configuration implements ConfigurationInterface
             // Connection name
             ?->scalarNode('logs_target_connection_name')
             ->defaultValue('default')
-            ->isRequired()
             ->end()
             // Table prefix
             ?->scalarNode('table_prefix')
@@ -29,11 +28,12 @@ class Configuration implements ConfigurationInterface
             ->end()
             // Disallowed namespaces
             ?->arrayNode('disallowed_namespaces')
-            ->defaultValue([])
+            ?->beforeNormalization()->castToArray()
+            ->end()
             ->end()
             // Disallowed classes
             ?->arrayNode('disallowed_classes')
-            ->defaultValue([])
+            ?->beforeNormalization()->castToArray()->end()
             ->end()
             ?->end();
 
