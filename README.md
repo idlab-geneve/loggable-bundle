@@ -10,11 +10,25 @@ To set under the wished connection configuration :
 
 ## Package file configuration
 
-You can add a config file name "idlab_loggable.yaml" in config/packages in you Symfony project : 
+You can add a config file name "idlab_loggable.yaml" in config/packages in you Symfony project :
 
     idlab_loggable:
         enabled: true
-        disallowed_namespaces: []
-        disallowed_classes: []
+        disallowed_namespaces: [
+            'Idlab\Loggable\Tests\Entity\IgnoredByNamespace'
+        ]
+        disallowed_classes: [
+            Idlab\Loggable\Tests\Entity\OtherDummyIgnoredByClass
+        ]
         logs_target_connection_name: 'default'
         table_prefix: 'example_table_prefix'
+
+## Add IdlabLoggable attribute
+
+    Import : 
+    use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
+
+    #[IdlabLoggable]
+    public ?string $value = null;
+
+
