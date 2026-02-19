@@ -53,7 +53,9 @@ class EntityLogEntryListener
 
     private function getDisallowedNamespaces(): array
     {
-        return $this->config->disallowedNamespaces;
+        $defautDisallowedNamespaces = ['Proxies\\'];
+
+        return array_merge($defautDisallowedNamespaces, $this->config->disallowedNamespaces);
     }
 
     /*
