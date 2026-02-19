@@ -1,6 +1,10 @@
 idlab_loggable:
   enabled: true
-  disallowed_namespaces: []
-  disallowed_classes: []
+  disallowed_namespaces: [
+    'Idlab\Loggable\Tests\Entity\IgnoredByNamespace'
+  ]
+  disallowed_classes: [
+    Idlab\Loggable\Tests\Entity\OtherDummyIgnoredByClass
+  ]
   logs_target_connection_name: 'default'
   table_prefix: ''

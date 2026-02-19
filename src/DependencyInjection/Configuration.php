@@ -28,12 +28,11 @@ class Configuration implements ConfigurationInterface
             ->end()
             // Disallowed namespaces
             ?->arrayNode('disallowed_namespaces')
-            ?->beforeNormalization()->castToArray()
-            ->end()
+            ?->scalarPrototype()->end()
             ->end()
             // Disallowed classes
             ?->arrayNode('disallowed_classes')
-            ?->beforeNormalization()->castToArray()->end()
+            ?->scalarPrototype()->end()
             ->end()
             ?->end();
 
