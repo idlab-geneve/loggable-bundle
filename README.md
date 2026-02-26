@@ -6,7 +6,7 @@ To set under the wished connection configuration :
 
     idlab_loggable:
         prefix: Idlab\Loggable\Entity
-        dir: "%kernel.project_dir%/vendor/idlab_loggable/src/Entity"
+        dir: "%kernel.project_dir%/vendor/idlab/loggable/src/Entity"
 
 ## Package file configuration
 
