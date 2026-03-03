@@ -1,6 +1,11 @@
 # CHANGELOG 
 
-## [1.0.5] - 2026-02-19
+## [1.0.6] - 2026-03-03
+
+- If createdBy is null, set 'anonymous' as value
+- Fix README.md
+
+## [1.0.5] - 2026-02-26
 
 - Init Idlab Loggable library
 - Add Proxies as default disallowed namespace merged to config

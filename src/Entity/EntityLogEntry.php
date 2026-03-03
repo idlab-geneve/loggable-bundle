@@ -110,14 +110,14 @@ class EntityLogEntry
         $this->createdAt = $createdAt;
     }
 
-    public function getCreatedBy(): ?string
+    public function getCreatedBy(): string
     {
         return $this->createdBy;
     }
 
     public function setCreatedBy(?string $createdBy): void
     {
-        $this->createdBy = $createdBy;
+        $this->createdBy = $createdBy ?: 'anonymous';
     }
 
     public function getImpersonatedBy(): ?string

@@ -16,12 +16,12 @@ You can add a config file name "idlab_loggable.yaml" in config/packages in you S
         enabled: true
         disallowed_namespaces: [
             'Idlab\Loggable\Tests\Entity\IgnoredByNamespace'
-        ]
+        ]s
         disallowed_classes: [
             Idlab\Loggable\Tests\Entity\OtherDummyIgnoredByClass
         ]
         logs_target_connection_name: 'default'
-        table_prefix: 'example_table_prefix'
+        table_prefix: 'example_table_prefix_'
 
 ## Add IdlabLoggable attribute
 
