@@ -1,5 +1,9 @@
 # CHANGELOG 
 
+## [Unrelead] - 2026-03-04
+
+- Add exceptions for all log creations
+
 ## [1.1.0] - 2026-03-04
 
 - Do not create a log if no properties are loggable + add test about this

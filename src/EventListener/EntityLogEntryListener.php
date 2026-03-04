@@ -144,16 +144,20 @@ class EntityLogEntryListener
         }
 
         if (count($data) > 0) {
-            $this->logsEntityManager->persist(new EntityLogEntry(
-                EntityLogEntry::ACTION_UPDATE,
-                $this->identifierConnectedUser,
-                $currentObject->getId(),
-                $className,
-                $data,
-                $this->impersonatedBy,
-                EntityLogEntry::ACTION_UPDATE
-            ));
-            $this->logsEntityManager->flush();
+            try {
+                $this->logsEntityManager->persist(new EntityLogEntry(
+                    EntityLogEntry::ACTION_UPDATE,
+                    $this->identifierConnectedUser,
+                    $currentObject->getId(),
+                    $className,
+                    $data,
+                    $this->impersonatedBy,
+                    EntityLogEntry::ACTION_UPDATE
+                ));
+                $this->logsEntityManager->flush();
+            } catch (\Exception $e) {
+                throw new \Exception('Error creating log for collection update : ' . $e->getMessage());
+            }
         }
     }
 
@@ -181,17 +185,21 @@ class EntityLogEntryListener
 
 
         if (count($data) > 0) {
-            $newLogEntry = new EntityLogEntry(
-                EntityLogEntry::ACTION_CREATE,
-                $this->identifierConnectedUser,
-                $currentObject->getId(),
-                $className,
-                $data,
-                $this->impersonatedBy,
-            );
+            try {
+                $newLogEntry = new EntityLogEntry(
+                    EntityLogEntry::ACTION_CREATE,
+                    $this->identifierConnectedUser,
+                    $currentObject->getId(),
+                    $className,
+                    $data,
+                    $this->impersonatedBy,
+                );
 
-            $this->logsEntityManager->persist($newLogEntry);
-            $this->logsEntityManager->flush();
+                $this->logsEntityManager->persist($newLogEntry);
+                $this->logsEntityManager->flush();
+            } catch (\Exception $e) {
+                throw new \Exception('Error when creating a log for entity creation : ' . $e->getMessage());
+            }
         }
 
         $this->processPendingCollectionsUpdatesLogsForEntity($defaultUow, $currentObject);
@@ -221,17 +229,21 @@ class EntityLogEntryListener
         $data = $this->manageData($defaultUow, $className, $defaultUow->getEntityChangeSet($currentObject));
 
         if (count($data) > 0) {
-            $newLogEntry = new EntityLogEntry(
-                EntityLogEntry::ACTION_UPDATE,
-                $this->identifierConnectedUser,
-                $currentObject->getId(),
-                $className,
-                $data,
-                $this->impersonatedBy,
-            );
+            try {
+                $newLogEntry = new EntityLogEntry(
+                    EntityLogEntry::ACTION_UPDATE,
+                    $this->identifierConnectedUser,
+                    $currentObject->getId(),
+                    $className,
+                    $data,
+                    $this->impersonatedBy,
+                );
 
-            $this->logsEntityManager->persist($newLogEntry);
-            $this->logsEntityManager->flush();
+                $this->logsEntityManager->persist($newLogEntry);
+                $this->logsEntityManager->flush();
+            } catch (\Exception $e) {
+                throw new \Exception('Error when creating a log for entity update : ' . $e->getMessage());
+            }
         }
 
         $this->processPendingCollectionsUpdatesLogsForEntity($defaultUow, $currentObject);
@@ -273,17 +285,21 @@ class EntityLogEntryListener
             return;
         }
 
-        $this->logsEntityManager->persist(new EntityLogEntry(
-            EntityLogEntry::ACTION_REMOVE,
-            $this->identifierConnectedUser,
-            $this->removedObjectId,
-            $className,
-            null,
-            $this->impersonatedBy,
-        ));
+        try {
+            $this->logsEntityManager->persist(new EntityLogEntry(
+                EntityLogEntry::ACTION_REMOVE,
+                $this->identifierConnectedUser,
+                $this->removedObjectId,
+                $className,
+                null,
+                $this->impersonatedBy,
+            ));
 
-        $this->removedObjectId = null;
-        $this->logsEntityManager->flush();
+            $this->removedObjectId = null;
+            $this->logsEntityManager->flush();
+        } catch (\Exception $e) {
+            throw new \Exception('Error when creating a log for entity deletion : ' . $e->getMessage());
+        }
     }
 
     /**
@@ -346,18 +362,22 @@ class EntityLogEntryListener
                     $dataForDeletions[$fieldName] = [];
                 }
 
-                $newLogEntry = new EntityLogEntry(
-                    EntityLogEntry::ACTION_UPDATE,
-                    $this->identifierConnectedUser,
-                    $entity->getId(),
-                    get_class($entity),
-                    $dataForDeletions,
-                    $this->impersonatedBy,
-                    EntityLogEntry::ACTION_REMOVE
-                );
+                try {
+                    $newLogEntry = new EntityLogEntry(
+                        EntityLogEntry::ACTION_UPDATE,
+                        $this->identifierConnectedUser,
+                        $entity->getId(),
+                        get_class($entity),
+                        $dataForDeletions,
+                        $this->impersonatedBy,
+                        EntityLogEntry::ACTION_REMOVE
+                    );
 
-                $this->logsEntityManager->persist($newLogEntry);
-                $this->logsEntityManager->flush();
+                    $this->logsEntityManager->persist($newLogEntry);
+                    $this->logsEntityManager->flush();
+                } catch (\Exception $e) {
+                    throw new \Exception('Error creating log for collection deletion : ' . $e->getMessage());
+                }
             }
         }
     }
