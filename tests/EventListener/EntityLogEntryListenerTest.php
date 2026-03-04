@@ -9,6 +9,7 @@ use Idlab\Loggable\Tests\Entity\DummyEntity;
 use Idlab\Loggable\Tests\Entity\DummyUser;
 use Idlab\Loggable\Tests\Entity\IgnoredByNamespace\DummyIgnored;
 use Idlab\Loggable\Tests\Entity\OtherDummyIgnoredByClass;
+use Idlab\Loggable\Tests\Entity\OtherDummyWithoutLoggedProperty;
 use Idlab\Loggable\Tests\Kernel\TestKernel;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
@@ -69,6 +70,17 @@ class EntityLogEntryListenerTest extends TestCase
     public function testIgnoredClasses(): void
     {
         $entity = new OtherDummyIgnoredByClass();
+        $entity->value = 'expected_value';
+        $this->em->persist($entity);
+        $this->em->flush();
+
+        $logEntries = $this->em->getRepository(EntityLogEntry::class)->findAll();
+        $this->assertEmpty($logEntries);
+    }
+
+    public function testIgnoredEntityWithoutLoggedProperty(): void
+    {
+        $entity = new OtherDummyWithoutLoggedProperty();
         $entity->value = 'expected_value';
         $this->em->persist($entity);
         $this->em->flush();

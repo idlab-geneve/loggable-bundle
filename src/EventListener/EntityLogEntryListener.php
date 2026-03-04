@@ -121,6 +121,10 @@ class EntityLogEntryListener
         $defaultUow = $args->getObjectManager()->getUnitOfWork();
         $data = $this->manageData($defaultUow, $className, $defaultUow->getEntityChangeSet($currentObject));
 
+        if (0 === count($data)) {
+            return;
+        }
+
         $newLogEntry = new EntityLogEntry(
             EntityLogEntry::ACTION_CREATE,
             $this->identifierConnectedUser,

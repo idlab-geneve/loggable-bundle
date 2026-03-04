@@ -1,5 +1,9 @@
 # CHANGELOG 
 
+## [Unreleased] - 2026-03-04
+
+- Do not create a log if no properties are loggable + add test about this
+
 ## [1.0.6] - 2026-03-03
 
 - If createdBy is null, set 'anonymous' as value
