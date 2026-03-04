@@ -2,6 +2,7 @@
 
 namespace Idlab\Loggable\EventListener;
 
+use Doctrine\ORM\Event\PostUpdateEventArgs;
 use Idlab\Loggable\Config\IdlabLoggableConfig;
 use Idlab\Loggable\Entity\EntityLogEntry;
 use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
@@ -22,6 +23,7 @@ use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInt
 use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
 
 #[AsDoctrineListener(event: Events::postPersist)]
+#[AsDoctrineListener(event: Events::postUpdate)]
 #[AsDoctrineListener(event: Events::preRemove)]
 #[AsDoctrineListener(event: Events::postRemove)]
 #[AsDoctrineListener(event: Events::onFlush)]
@@ -32,6 +34,8 @@ class EntityLogEntryListener
 
     private ?string $identifierConnectedUser;
     private ?string $impersonatedBy;
+
+    private array $pendingLogs = [];
 
     public function __construct(
         private readonly IdlabLoggableConfig     $config,
@@ -99,6 +103,60 @@ class EntityLogEntryListener
         return count($idlabLoggableAttributes) > 0;
     }
 
+    private function getIdentifiersFromCollection(array $values): array
+    {
+        $identifiers = [];
+        foreach ($values as $value) {
+            $collectionItemClassName = $value;
+            if (method_exists($collectionItemClassName, 'getId')) {
+                $identifiers[] = $value->getId();
+            } elseif (method_exists($collectionItemClassName, 'getUuid')) {
+                $identifiers[] = $value->getUuid();
+            } elseif (method_exists($collectionItemClassName, '__toString')) {
+                $identifiers[] = $value->__toString();
+            } else {
+                $identifiers[] = $value;
+            }
+        }
+        return $identifiers;
+    }
+
+    private function processPendingCollectionsUpdatesLogsForEntity(UnitOfWork $uow, mixed $currentObject): void
+    {
+        $oid = spl_object_id($currentObject);
+        $className = get_class($currentObject);
+        $pendingLogsCollectionUpdates = $this->pendingLogsCollectionUpdated[$oid] ?? [];
+
+        $data = [];
+        foreach ($pendingLogsCollectionUpdates as $collection) {
+            $fieldName = $collection->getMapping()['fieldName'];
+            if (!$this->supportProperty($fieldName, $className)) {
+                continue;
+            }
+            $insertDiff = $collection->getInsertDiff();
+            $deleteDiff = $collection->getDeleteDiff();
+            if ($insertDiff && count($insertDiff) > 0) {
+                $data[$fieldName]['__inserted__'] = $this->getIdentifiersFromCollection($insertDiff);
+            }
+            if ($deleteDiff && count($deleteDiff) > 0) {
+                $data[$fieldName]['__removed__'] = $this->getIdentifiersFromCollection($deleteDiff);
+            }
+        }
+
+        if (count($data) > 0) {
+            $this->logsEntityManager->persist(new EntityLogEntry(
+                EntityLogEntry::ACTION_UPDATE,
+                $this->identifierConnectedUser,
+                $currentObject->getId(),
+                $className,
+                $data,
+                $this->impersonatedBy,
+                EntityLogEntry::ACTION_UPDATE
+            ));
+            $this->logsEntityManager->flush();
+        }
+    }
+
     /**
      *
      * Creation of a new entity
@@ -121,21 +179,62 @@ class EntityLogEntryListener
         $defaultUow = $args->getObjectManager()->getUnitOfWork();
         $data = $this->manageData($defaultUow, $className, $defaultUow->getEntityChangeSet($currentObject));
 
-        if (0 === count($data)) {
+
+        if (count($data) > 0) {
+            $newLogEntry = new EntityLogEntry(
+                EntityLogEntry::ACTION_CREATE,
+                $this->identifierConnectedUser,
+                $currentObject->getId(),
+                $className,
+                $data,
+                $this->impersonatedBy,
+            );
+
+            $this->logsEntityManager->persist($newLogEntry);
+            $this->logsEntityManager->flush();
+        }
+
+        $this->processPendingCollectionsUpdatesLogsForEntity($defaultUow, $currentObject);
+    }
+
+    /**
+     *
+     * Update existing entity
+     * @throws EntityNotFoundException
+     * @throws \JsonException
+     */
+    public function postUpdate(PostUpdateEventArgs $args): void
+    {
+        if (!$this->config->enabled) {
             return;
         }
 
-        $newLogEntry = new EntityLogEntry(
-            EntityLogEntry::ACTION_CREATE,
-            $this->identifierConnectedUser,
-            $currentObject->getId(),
-            $className,
-            $data,
-            $this->impersonatedBy,
-        );
+        $currentObject = $args->getObject();
+        $className = get_class($currentObject);
 
-        $this->logsEntityManager->persist($newLogEntry);
-        $this->logsEntityManager->flush();
+        if (!$this->supportEntity($className)) {
+            return;
+        }
+
+        // "Flat" properties and ManyToOne considered
+        $defaultUow = $args->getObjectManager()->getUnitOfWork();
+        $data = $this->manageData($defaultUow, $className, $defaultUow->getEntityChangeSet($currentObject));
+
+        if (count($data) > 0) {
+            $newLogEntry = new EntityLogEntry(
+                EntityLogEntry::ACTION_UPDATE,
+                $this->identifierConnectedUser,
+                $currentObject->getId(),
+                $className,
+                $data,
+                $this->impersonatedBy,
+            );
+
+            $this->logsEntityManager->persist($newLogEntry);
+            $this->logsEntityManager->flush();
+        }
+
+        $this->processPendingCollectionsUpdatesLogsForEntity($defaultUow, $currentObject);
     }
 
     /*
@@ -200,84 +299,66 @@ class EntityLogEntryListener
         $defaultObjectManager = $args->getObjectManager();
         $uow = $defaultObjectManager->getUnitOfWork();
 
-        $data = $entities = [];
-        foreach ($uow->getScheduledEntityUpdates() as $entity) {
-            $className = get_class($entity);
-            if (!$this->supportEntity($className)) {
-                continue;
-            }
-
-            // "Flat" properties and ManyToOne considered
-            $changeset = $uow->getEntityChangeSet($entity);
-            $changeSetData = $this->manageData($uow, $className, $changeset);
-
-            if (count($changeSetData) > 0) {
-                $data[$className . '_' . $entity->getId()] = $changeSetData;
-                $entities[$className . '_' . $entity->getId()] = $entity;
-            }
-        }
-
-        // Updated collection (add or remove item)
+        // Updated collection (add or remove item) => build pending logs collection to process in postPersist and postUpdate
         foreach ($uow->getScheduledCollectionUpdates() as $collection) {
             $owner = $collection->getOwner();
             if (!$owner) {
                 continue;
             }
             $ownerClassName = get_class($owner);
-            $mapping = $collection->getMapping();
-            $ownerKey = $ownerClassName . '_' . $owner->getId();
-            $fieldName = $mapping['fieldName'];
-
-            if ($collection->getInsertDiff() || $collection->getDeleteDiff()) {
-                $entities[$ownerKey] = $owner;
-                foreach ($collection->getValues() as $value) {
-                    $collectionItemClassName = get_class($value);
-                    if (method_exists($collectionItemClassName, 'getId')) {
-                        $data[$ownerKey][$fieldName][] = $value->getId();
-                    } elseif (method_exists($collectionItemClassName, 'getUuid')) {
-                        $data[$ownerKey][$fieldName][] = $value->getUuid();
-                    } elseif (method_exists($collectionItemClassName, '__toString')) {
-                        $data[$ownerKey][$fieldName][] = $value->__toString();
-                    } else {
-                        $data[$ownerKey][$fieldName][] = $collectionItemClassName;
-                    }
-                }
+            if (!$this->supportEntity($ownerClassName)) {
+                continue;
             }
+            $oid = spl_object_id($owner); // unique identifier in memory
+            $this->pendingLogsCollectionUpdated[$oid][] = $collection;
         }
 
         // Collection completely removed (clear(), orphanRemoval, etc...)
+        $scheduledCollectionDeletionsByEntity = [];
         foreach ($uow->getScheduledCollectionDeletions() as $collection) {
             $owner = $collection->getOwner();
             if (!$owner) {
                 continue;
             }
             $ownerClassName = get_class($owner);
-            $mapping = $collection->getMapping();
-            $ownerKey = $ownerClassName . '_' . $owner->getId();
-            $fieldName = $mapping['fieldName'];
-
-            // Here, collection became EMPTY
-            $entities[$ownerKey] = $owner;
-            $data[$ownerKey][$fieldName] = [];
+            if (!$this->supportEntity($ownerClassName)) {
+                continue;
+            }
+            $fieldName = $collection->getMapping()['fieldName'];
+            if (!$this->supportProperty($fieldName, $ownerClassName)) {
+                continue;
+            }
+            $ownerId = $owner->getId();
+            $scheduledCollectionDeletionsByEntity[$ownerId]['entity'] = $owner;
+            $scheduledCollectionDeletionsByEntity[$ownerId]['collections'][] = $collection;
         }
 
-        if (count($data) > 0) {
-            foreach ($data as $key => $value) {
-                $loggedEntity = $entities[$key];
-                $className = get_class($loggedEntity);
+        foreach ($scheduledCollectionDeletionsByEntity as $entityId => $values) {
+            $dataForDeletions = [];
+            $collections = $values['collections'] ?? [];
+            $entity = $values['entity'] ?? null;
+
+            if ($entity && count($collections) > 0) {
+                foreach ($collections as $collection) {
+                    $fieldName = $collection->getMapping()['fieldName'];
+
+                    // when collection is EMPTY
+                    $dataForDeletions[$fieldName] = [];
+                }
 
                 $newLogEntry = new EntityLogEntry(
                     EntityLogEntry::ACTION_UPDATE,
                     $this->identifierConnectedUser,
-                    $loggedEntity->getId(),
-                    $className,
-                    $value,
+                    $entity->getId(),
+                    get_class($entity),
+                    $dataForDeletions,
                     $this->impersonatedBy,
+                    EntityLogEntry::ACTION_REMOVE
                 );
-                $this->logsEntityManager->persist($newLogEntry);
-            }
 
-            $this->logsEntityManager->flush();
+                $this->logsEntityManager->persist($newLogEntry);
+                $this->logsEntityManager->flush();
+            }
         }
     }
 

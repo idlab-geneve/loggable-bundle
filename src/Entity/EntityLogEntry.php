@@ -20,6 +20,9 @@ class EntityLogEntry
     #[ORM\Column(type: 'string', length: 8, nullable: false)]
     protected ?string $action;
 
+    #[ORM\Column(type: 'string', length: 8, nullable: true)]
+    protected ?string $collectionAction;
+
     #[ORM\Column(type: 'integer', nullable: false)]
     protected ?int $objectId;
 
@@ -45,6 +48,7 @@ class EntityLogEntry
         string $objectClass,
         ?array $data = null,
         ?string $impersonatedBy = null,
+        ?string $collectionAction = null
     ) {
         $this->createdAt      = new \DateTimeImmutable();
         $this->action         = $action;
@@ -53,6 +57,7 @@ class EntityLogEntry
         $this->objectId       = $objectId;
         $this->objectClass    = $objectClass;
         $this->impersonatedBy = $impersonatedBy;
+        $this->collectionAction = $collectionAction;
     }
 
     public function getId(): ?int
@@ -68,6 +73,16 @@ class EntityLogEntry
     public function setAction(?string $action): void
     {
         $this->action = $action;
+    }
+
+    public function getCollectionAction(): ?string
+    {
+        return $this->collectionAction;
+    }
+
+    public function setCollectionAction(?string $collectionAction): void
+    {
+        $this->collectionAction = $collectionAction;
     }
 
     public function getObjectId(): ?string
