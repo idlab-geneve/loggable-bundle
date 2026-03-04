@@ -33,12 +33,12 @@ use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
 class EntityLogEntryListener
 {
     private ObjectManager $logsEntityManager;
-    private ?int $removedObjectId = null;
 
     private ?string $identifierConnectedUser;
     private ?string $impersonatedBy;
 
     private bool $processingLogs = false;
+    private array $removedObjectIds = [];
     private array $pendingLogsCollectionUpdated = [];
     private array $pendingLogs = [];
 
@@ -276,7 +276,8 @@ class EntityLogEntryListener
             return;
         }
 
-        $this->removedObjectId = $currentObject->getId() ?: null;
+        $oid = spl_object_id($currentObject);
+        $this->removedObjectIds[$oid] = $currentObject->getId() ?: null;
     }
 
     /*
@@ -295,15 +296,18 @@ class EntityLogEntryListener
             return;
         }
 
+        $oid = spl_object_id($currentObject);
+        $removedObjectId= $this->removedObjectIds[$oid] ?? null;
+
         $this->pendingLogs[] = [
             'action' => EntityLogEntry::ACTION_REMOVE,
-            'currentObjectId' => $this->removedObjectId,
+            'currentObjectId' => $removedObjectId,
             'currentObjectClassName' => $className,
             'data' => null,
             'collectionAction' => null,
         ];
 
-        $this->removedObjectId = null;
+        unset($this->removedObjectIds[$oid]);
     }
 
     /**
