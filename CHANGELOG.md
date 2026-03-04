@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## [Unreleased] - 2026-03-04
+## [1.1.3] - 2026-03-04
 
 - Fix on preRemove and postRemove to save the removed ids
 
