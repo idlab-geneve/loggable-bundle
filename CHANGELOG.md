@@ -1,6 +1,6 @@
 # CHANGELOG 
 
-## [Unreleased] - 2026-03-04
+## [1.1.0] - 2026-03-04
 
 - Do not create a log if no properties are loggable + add test about this
 - ID not yet known on flush : preserve collections to create logs in postPersist and postUpdate
