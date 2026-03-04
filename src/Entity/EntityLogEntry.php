@@ -43,7 +43,7 @@ class EntityLogEntry
 
     public function __construct(
         string $action,
-        string $createdBy,
+        ?string $createdBy,
         int $objectId,
         string $objectClass,
         ?array $data = null,
@@ -52,7 +52,7 @@ class EntityLogEntry
     ) {
         $this->createdAt      = new \DateTimeImmutable();
         $this->action         = $action;
-        $this->createdBy      = $createdBy;
+        $this->createdBy      = $createdBy ?: 'anonymous';
         $this->data           = $data;
         $this->objectId       = $objectId;
         $this->objectClass    = $objectClass;
@@ -132,7 +132,7 @@ class EntityLogEntry
 
     public function setCreatedBy(?string $createdBy): void
     {
-        $this->createdBy = $createdBy ?: 'anonymous';
+        $this->createdBy = $createdBy;
     }
 
     public function getImpersonatedBy(): ?string

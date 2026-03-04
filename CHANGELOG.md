@@ -2,7 +2,9 @@
 
 ## [Unrelead] - 2026-03-04
 
-- Add exceptions for all log creations
+- Add exception for log creations
+- Fix constructor
+- Centralize logs creation in postFlush
 
 ## [1.1.0] - 2026-03-04
 

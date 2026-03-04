@@ -2,6 +2,7 @@
 
 namespace Idlab\Loggable\EventListener;
 
+use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Event\PostUpdateEventArgs;
 use Idlab\Loggable\Config\IdlabLoggableConfig;
 use Idlab\Loggable\Entity\EntityLogEntry;
@@ -27,6 +28,7 @@ use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
 #[AsDoctrineListener(event: Events::preRemove)]
 #[AsDoctrineListener(event: Events::postRemove)]
 #[AsDoctrineListener(event: Events::onFlush)]
+#[AsDoctrineListener(event: Events::postFlush)]
 class EntityLogEntryListener
 {
     private ObjectManager $logsEntityManager;
@@ -35,6 +37,8 @@ class EntityLogEntryListener
     private ?string $identifierConnectedUser;
     private ?string $impersonatedBy;
 
+    private bool $processingLogs = false;
+    private array $pendingLogsCollectionUpdated = [];
     private array $pendingLogs = [];
 
     public function __construct(
@@ -123,41 +127,38 @@ class EntityLogEntryListener
 
     private function processPendingCollectionsUpdatesLogsForEntity(UnitOfWork $uow, mixed $currentObject): void
     {
-        $oid = spl_object_id($currentObject);
-        $className = get_class($currentObject);
-        $pendingLogsCollectionUpdates = $this->pendingLogsCollectionUpdated[$oid] ?? [];
+        try {
+            $oid = spl_object_id($currentObject);
+            $className = get_class($currentObject);
+            $pendingLogsCollectionUpdates = $this->pendingLogsCollectionUpdated[$oid] ?? [];
 
-        $data = [];
-        foreach ($pendingLogsCollectionUpdates as $collection) {
-            $fieldName = $collection->getMapping()['fieldName'];
-            if (!$this->supportProperty($fieldName, $className)) {
-                continue;
+            $data = [];
+            foreach ($pendingLogsCollectionUpdates as $collection) {
+                $fieldName = $collection->getMapping()['fieldName'];
+                if (!$this->supportProperty($fieldName, $className)) {
+                    continue;
+                }
+                $insertDiff = $collection->getInsertDiff();
+                $deleteDiff = $collection->getDeleteDiff();
+                if ($insertDiff && count($insertDiff) > 0) {
+                    $data[$fieldName]['__inserted__'] = $this->getIdentifiersFromCollection($insertDiff);
+                }
+                if ($deleteDiff && count($deleteDiff) > 0) {
+                    $data[$fieldName]['__removed__'] = $this->getIdentifiersFromCollection($deleteDiff);
+                }
             }
-            $insertDiff = $collection->getInsertDiff();
-            $deleteDiff = $collection->getDeleteDiff();
-            if ($insertDiff && count($insertDiff) > 0) {
-                $data[$fieldName]['__inserted__'] = $this->getIdentifiersFromCollection($insertDiff);
-            }
-            if ($deleteDiff && count($deleteDiff) > 0) {
-                $data[$fieldName]['__removed__'] = $this->getIdentifiersFromCollection($deleteDiff);
-            }
-        }
 
-        if (count($data) > 0) {
-            try {
-                $this->logsEntityManager->persist(new EntityLogEntry(
-                    EntityLogEntry::ACTION_UPDATE,
-                    $this->identifierConnectedUser,
-                    $currentObject->getId(),
-                    $className,
-                    $data,
-                    $this->impersonatedBy,
-                    EntityLogEntry::ACTION_UPDATE
-                ));
-                $this->logsEntityManager->flush();
-            } catch (\Exception $e) {
-                throw new \Exception('Error creating log for collection update : ' . $e->getMessage());
+            if (count($data) > 0) {
+                $this->pendingLogs[] = [
+                    'action' => EntityLogEntry::ACTION_UPDATE,
+                    'currentObjectId' => $currentObject->getId(),
+                    'currentObjectClassName' => $className,
+                    'data' => $data,
+                    'collectionAction' => EntityLogEntry::ACTION_UPDATE,
+                ];
             }
+        } catch (\Exception $e) {
+            throw new \Exception('Error in processPendingCollectionsUpdatesLogsForEntity method : ' . $e->getMessage());
         }
     }
 
@@ -185,21 +186,13 @@ class EntityLogEntryListener
 
 
         if (count($data) > 0) {
-            try {
-                $newLogEntry = new EntityLogEntry(
-                    EntityLogEntry::ACTION_CREATE,
-                    $this->identifierConnectedUser,
-                    $currentObject->getId(),
-                    $className,
-                    $data,
-                    $this->impersonatedBy,
-                );
-
-                $this->logsEntityManager->persist($newLogEntry);
-                $this->logsEntityManager->flush();
-            } catch (\Exception $e) {
-                throw new \Exception('Error when creating a log for entity creation : ' . $e->getMessage());
-            }
+            $this->pendingLogs[] = [
+                'action' => EntityLogEntry::ACTION_CREATE,
+                'currentObjectId' => $currentObject->getId(),
+                'currentObjectClassName' => $className,
+                'data' => $data,
+                'collectionAction' => null,
+            ];
         }
 
         $this->processPendingCollectionsUpdatesLogsForEntity($defaultUow, $currentObject);
@@ -217,36 +210,32 @@ class EntityLogEntryListener
             return;
         }
 
-        $currentObject = $args->getObject();
-        $className = get_class($currentObject);
+        try {
+            $currentObject = $args->getObject();
+            $className = get_class($currentObject);
 
-        if (!$this->supportEntity($className)) {
-            return;
-        }
-
-        // "Flat" properties and ManyToOne considered
-        $defaultUow = $args->getObjectManager()->getUnitOfWork();
-        $data = $this->manageData($defaultUow, $className, $defaultUow->getEntityChangeSet($currentObject));
-
-        if (count($data) > 0) {
-            try {
-                $newLogEntry = new EntityLogEntry(
-                    EntityLogEntry::ACTION_UPDATE,
-                    $this->identifierConnectedUser,
-                    $currentObject->getId(),
-                    $className,
-                    $data,
-                    $this->impersonatedBy,
-                );
-
-                $this->logsEntityManager->persist($newLogEntry);
-                $this->logsEntityManager->flush();
-            } catch (\Exception $e) {
-                throw new \Exception('Error when creating a log for entity update : ' . $e->getMessage());
+            if (!$this->supportEntity($className)) {
+                return;
             }
-        }
 
-        $this->processPendingCollectionsUpdatesLogsForEntity($defaultUow, $currentObject);
+            // "Flat" properties and ManyToOne considered
+            $defaultUow = $args->getObjectManager()->getUnitOfWork();
+            $data = $this->manageData($defaultUow, $className, $defaultUow->getEntityChangeSet($currentObject));
+
+            if (count($data) > 0) {
+                $this->pendingLogs[] = [
+                    'action' => EntityLogEntry::ACTION_UPDATE,
+                    'currentObjectId' => $currentObject->getId(),
+                    'currentObjectClassName' => $className,
+                    'data' => $data,
+                    'collectionAction' => null,
+                ];
+            }
+
+            $this->processPendingCollectionsUpdatesLogsForEntity($defaultUow, $currentObject);
+        } catch (\Exception $e) {
+            throw new \Exception('Error in postUpdate method : ' . $e->getMessage());
+        }
     }
 
     /*
@@ -285,21 +274,15 @@ class EntityLogEntryListener
             return;
         }
 
-        try {
-            $this->logsEntityManager->persist(new EntityLogEntry(
-                EntityLogEntry::ACTION_REMOVE,
-                $this->identifierConnectedUser,
-                $this->removedObjectId,
-                $className,
-                null,
-                $this->impersonatedBy,
-            ));
+        $this->pendingLogs[] = [
+            'action' => EntityLogEntry::ACTION_REMOVE,
+            'currentObjectId' => $this->removedObjectId,
+            'currentObjectClassName' => $className,
+            'data' => null,
+            'collectionAction' => null,
+        ];
 
-            $this->removedObjectId = null;
-            $this->logsEntityManager->flush();
-        } catch (\Exception $e) {
-            throw new \Exception('Error when creating a log for entity deletion : ' . $e->getMessage());
-        }
+        $this->removedObjectId = null;
     }
 
     /**
@@ -362,24 +345,53 @@ class EntityLogEntryListener
                     $dataForDeletions[$fieldName] = [];
                 }
 
-                try {
-                    $newLogEntry = new EntityLogEntry(
-                        EntityLogEntry::ACTION_UPDATE,
-                        $this->identifierConnectedUser,
-                        $entity->getId(),
-                        get_class($entity),
-                        $dataForDeletions,
-                        $this->impersonatedBy,
-                        EntityLogEntry::ACTION_REMOVE
-                    );
-
-                    $this->logsEntityManager->persist($newLogEntry);
-                    $this->logsEntityManager->flush();
-                } catch (\Exception $e) {
-                    throw new \Exception('Error creating log for collection deletion : ' . $e->getMessage());
-                }
+                $this->pendingLogs[] = [
+                    'action' => EntityLogEntry::ACTION_UPDATE,
+                    'currentObjectId' => $entity->getId(),
+                    'currentObjectClassName' => get_class($entity),
+                    'data' => $dataForDeletions,
+                    'collectionAction' => EntityLogEntry::ACTION_REMOVE,
+                ];
             }
         }
+    }
+
+    public function postFlush(PostFlushEventArgs $args)
+    {
+        if (!$this->config->enabled) {
+            return;
+        }
+
+        if ($this->processingLogs || empty($this->pendingLogs)) {
+            return;
+        }
+
+        $this->processingLogs = true;
+
+        if (count($this->pendingLogs) > 0) {
+            foreach ($this->pendingLogs as $pendingLog) {
+                $this->logsEntityManager->persist(new EntityLogEntry(
+                    $pendingLog['action'] ?? null,
+                    $this->identifierConnectedUser ?? null,
+                    $pendingLog['currentObjectId'] ?? null,
+                    $pendingLog['currentObjectClassName'] ?? null,
+                    $pendingLog['data'] ?? null,
+                    $this->impersonatedBy ?? null,
+                    $pendingLog['collectionAction'] ?? null,
+                ));
+            }
+        }
+
+        $this->pendingLogs = [];
+
+        try {
+            $this->logsEntityManager->flush();
+        } catch (\Throwable $e) {
+            //error_log($e->getMessage());
+            throw new \Exception('Error during creating of logs : ' . $e->getMessage());
+        }
+
+        $this->processingLogs = false;
     }
 
     /**
@@ -418,49 +430,53 @@ class EntityLogEntryListener
      */
     private function normalizeValue(UnitOfWork $uow, mixed $value): mixed
     {
-        if (null === $value || '' === $value) {
-            return null;
+        try {
+            if (null === $value || '' === $value) {
+                return null;
+            }
+
+            // Numeric value
+            if (is_numeric($value)) {
+                return (string) +$value;
+            }
+
+            // DateTimeInterface
+            if ($value instanceof \DateTimeInterface) {
+                return $value->format(\DateTimeInterface::W3C);
+            }
+
+            // Doctrine entity (proxy or not)
+            if (is_object($value) && $uow->isInIdentityMap($value) && $uow->getEntityIdentifier($value)) {
+                return [
+                    '__entity__' => ClassUtils::getClass($value),
+                    'id' => $uow->getEntityIdentifier($value),
+                ];
+            }
+
+            // Arrays (JSON or simple array)
+            if (is_array($value)) {
+                ksort($value);
+
+                return array_map(fn($v) => $this->normalizeValue($uow, $v), $value);
+            }
+
+            // Serializable JSON object
+            if ($value instanceof \JsonSerializable) {
+                return $this->normalizeValue($uow, $value->jsonSerialize());
+            }
+
+            // Fallback generic object
+            if (is_object($value)) {
+                return [
+                    '__object__' => get_class($value),
+                    'hash' => spl_object_hash($value),
+                ];
+            }
+
+            return $value;
+        } catch (\Exception $e) {
+            throw new \Exception('Error on normalizeValue method : ' . $e->getMessage());
         }
-
-        // Numeric value
-        if (is_numeric($value)) {
-            return (string) +$value;
-        }
-
-        // DateTimeInterface
-        if ($value instanceof \DateTimeInterface) {
-            return $value->format(\DateTimeInterface::W3C);
-        }
-
-        // Doctrine entity (proxy or not)
-        if (is_object($value) && $uow->isInIdentityMap($value) && $uow->getEntityIdentifier($value)) {
-            return [
-                '__entity__' => ClassUtils::getClass($value),
-                'id' => $uow->getEntityIdentifier($value),
-            ];
-        }
-
-        // Arrays (JSON or simple array)
-        if (is_array($value)) {
-            ksort($value);
-
-            return array_map(fn($v) => $this->normalizeValue($uow, $v), $value);
-        }
-
-        // Serializable JSON object
-        if ($value instanceof \JsonSerializable) {
-            return $this->normalizeValue($uow, $value->jsonSerialize());
-        }
-
-        // Fallback generic object
-        if (is_object($value)) {
-            return [
-                '__object__' => get_class($value),
-                'hash' => spl_object_hash($value),
-            ];
-        }
-
-        return $value;
     }
 
     /**
