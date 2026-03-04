@@ -1,5 +1,9 @@
 # CHANGELOG 
 
+## [1.1.2] - 2026-03-04
+
+- Anticipate Embeds for supportProperty
+
 ## [1.1.1] - 2026-03-04
 
 - Add exception for log creations

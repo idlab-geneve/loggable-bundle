@@ -4,6 +4,7 @@ namespace Idlab\Loggable\EventListener;
 
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Event\PostUpdateEventArgs;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Idlab\Loggable\Config\IdlabLoggableConfig;
 use Idlab\Loggable\Entity\EntityLogEntry;
 use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
@@ -99,9 +100,26 @@ class EntityLogEntryListener
      * Here, evaluate whether the property has the “IdlabLoggable” attribute
      * in order to determine whether it can be versioned
      */
-    private function supportProperty(string $evaluatedPropertyName, string $evaluatedClassName): bool
+    private function supportProperty(string $evaluatedPropertyName, string $evaluatedClassName, ClassMetadata $meta): bool
     {
-        $property = new \ReflectionProperty($evaluatedClassName, $evaluatedPropertyName);
+        $property = null;
+        if (str_contains($evaluatedPropertyName, '.')) {
+            [$embedField, $subField] = explode('.', $evaluatedPropertyName, 2);
+            $property = new \ReflectionProperty($evaluatedClassName, $embedField);
+            if (isset($meta->embeddedClasses[$embedField])) {
+                $embedClass = $meta->embeddedClasses[$embedField]['class'];
+                $reflection = new \ReflectionClass($embedClass);
+
+                if ($reflection->hasProperty($subField)) {
+                    $property = new \ReflectionProperty($embedClass, $subField);
+                }
+            }
+        } else {
+            $property = new \ReflectionProperty($evaluatedClassName, $evaluatedPropertyName);
+        }
+        if (is_null($property)) {
+            return false;
+        }
         $idlabLoggableAttributes = $property->getAttributes(IdlabLoggable::class);
 
         return count($idlabLoggableAttributes) > 0;
@@ -125,9 +143,10 @@ class EntityLogEntryListener
         return $identifiers;
     }
 
-    private function processPendingCollectionsUpdatesLogsForEntity(UnitOfWork $uow, mixed $currentObject): void
+    private function processPendingCollectionsUpdatesLogsForEntity(ObjectManager $defaultObjectManager, mixed $currentObject): void
     {
         try {
+            $uow = $defaultObjectManager->getUnitOfWork();
             $oid = spl_object_id($currentObject);
             $className = get_class($currentObject);
             $pendingLogsCollectionUpdates = $this->pendingLogsCollectionUpdated[$oid] ?? [];
@@ -135,7 +154,7 @@ class EntityLogEntryListener
             $data = [];
             foreach ($pendingLogsCollectionUpdates as $collection) {
                 $fieldName = $collection->getMapping()['fieldName'];
-                if (!$this->supportProperty($fieldName, $className)) {
+                if (!$this->supportProperty($fieldName, $className, $defaultObjectManager->getClassMetadata($className))) {
                     continue;
                 }
                 $insertDiff = $collection->getInsertDiff();
@@ -181,8 +200,9 @@ class EntityLogEntryListener
             return;
         }
 
-        $defaultUow = $args->getObjectManager()->getUnitOfWork();
-        $data = $this->manageData($defaultUow, $className, $defaultUow->getEntityChangeSet($currentObject));
+        $defaultObjectManager = $args->getObjectManager();
+        $defaultUow = $defaultObjectManager->getUnitOfWork();
+        $data = $this->manageData($defaultObjectManager, $className, $defaultUow->getEntityChangeSet($currentObject));
 
 
         if (count($data) > 0) {
@@ -195,7 +215,7 @@ class EntityLogEntryListener
             ];
         }
 
-        $this->processPendingCollectionsUpdatesLogsForEntity($defaultUow, $currentObject);
+        $this->processPendingCollectionsUpdatesLogsForEntity($defaultObjectManager, $currentObject, $defaultObjectManager);
     }
 
     /**
@@ -219,8 +239,9 @@ class EntityLogEntryListener
             }
 
             // "Flat" properties and ManyToOne considered
-            $defaultUow = $args->getObjectManager()->getUnitOfWork();
-            $data = $this->manageData($defaultUow, $className, $defaultUow->getEntityChangeSet($currentObject));
+            $defaultObjectManager = $args->getObjectManager();
+            $defaultUow = $defaultObjectManager->getUnitOfWork();
+            $data = $this->manageData($defaultObjectManager, $className, $defaultUow->getEntityChangeSet($currentObject));
 
             if (count($data) > 0) {
                 $this->pendingLogs[] = [
@@ -232,7 +253,7 @@ class EntityLogEntryListener
                 ];
             }
 
-            $this->processPendingCollectionsUpdatesLogsForEntity($defaultUow, $currentObject);
+            $this->processPendingCollectionsUpdatesLogsForEntity($defaultObjectManager, $currentObject);
         } catch (\Exception $e) {
             throw new \Exception('Error in postUpdate method : ' . $e->getMessage());
         }
@@ -324,7 +345,7 @@ class EntityLogEntryListener
                 continue;
             }
             $fieldName = $collection->getMapping()['fieldName'];
-            if (!$this->supportProperty($fieldName, $ownerClassName)) {
+            if (!$this->supportProperty($fieldName, $ownerClassName, $defaultObjectManager->getClassMetadata($ownerClassName))) {
                 continue;
             }
             $ownerId = $owner->getId();
@@ -398,10 +419,11 @@ class EntityLogEntryListener
      * @throws EntityNotFoundException
      * @throws \JsonException
      */
-    private function manageData(UnitOfWork $uow, string $className, array $changeSet): array
+    private function manageData(ObjectManager $defaultObjectManager, string $className, array $changeSet): array
     {
+        $uow = $defaultObjectManager->getUnitOfWork();
         foreach ($changeSet as $key => $change) {
-            if (!$this->supportProperty($key, $className)) {
+            if (!$this->supportProperty($key, $className, $defaultObjectManager->getClassMetadata($className))) {
                 unset($changeSet[$key]);
                 continue;
             }
