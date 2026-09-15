@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## [2.0.0] - 2026-09-15
+
+- [BC Break] Remove `lexik/jwt-authentication-bundle` dependency
+- Symfony constraints include `^6.4|^7.0|^8.0`
+
 ## [1.1.3] - 2026-03-04
 
 - Fix on preRemove and postRemove to save the removed ids
