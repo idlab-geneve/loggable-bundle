@@ -19,7 +19,6 @@ use Doctrine\ORM\Events;
 use Doctrine\ORM\UnitOfWork;
 use Doctrine\Persistence\ManagerRegistry;
 use Doctrine\Persistence\ObjectManager;
-use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
@@ -46,7 +45,6 @@ class EntityLogEntryListener
         private readonly IdlabLoggableConfig     $config,
         private readonly ManagerRegistry         $registry,
         private readonly Security                $security,
-        public readonly JWTTokenManagerInterface $jWTManager,
         public readonly TokenStorageInterface    $tokenStorageInterface,
     ) {
         $this->logsEntityManager = $this->registry->getManager($this->config->loginTargetConnectionName);
@@ -297,7 +295,7 @@ class EntityLogEntryListener
         }
 
         $oid = spl_object_id($currentObject);
-        $removedObjectId= $this->removedObjectIds[$oid] ?? null;
+        $removedObjectId = $this->removedObjectIds[$oid] ?? null;
 
         $this->pendingLogs[] = [
             'action' => EntityLogEntry::ACTION_REMOVE,
