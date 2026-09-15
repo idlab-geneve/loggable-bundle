@@ -3,6 +3,7 @@
 ## [2.0.1] - 2026-09-15
 
 - fix broken configuration
+- better README.md
 
 ## [2.0.0] - 2026-09-15
 

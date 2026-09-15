@@ -5,31 +5,38 @@ This bundle supports Symfony 6.4, 7.x, and 8.x on PHP 8.2 or newer. Symfony 8 re
 ## Configuration in doctrine.yaml
 
 To set under the wished connection configuration :
-
-    idlab_loggable:
-        prefix: Idlab\Loggable\Entity
-        dir: "%kernel.project_dir%/vendor/idlab/loggable/src/Entity"
+```yaml
+doctrine:
+  orm:
+    entity_manager:
+      default:
+        idlab_loggable:
+          prefix: Idlab\Loggable\Entity
+          dir: "%kernel.project_dir%/vendor/idlab/loggable/src/Entity"
+```
+> **_NOTE:_**  If you are using the short syntax for the ORM configuration, the ``mappings`` key is directly under ``orm:``
 
 ## Package file configuration
 
 You can add a config file name "idlab_loggable.yaml" in config/packages in you Symfony project :
-
-    idlab_loggable:
-        enabled: true
-        disallowed_namespaces: [
-            'Idlab\Loggable\Tests\Entity\IgnoredByNamespace'
-        ]s
-        disallowed_classes: [
-            Idlab\Loggable\Tests\Entity\OtherDummyIgnoredByClass
-        ]
-        logs_target_connection_name: 'default'
-        table_prefix: 'example_table_prefix_'
-
+```yaml
+idlab_loggable:
+  enabled: true
+  logs_target_connection_name: 'default'
+  table_prefix: 'example_table_prefix_'
+  disallowed_namespaces: [
+    'App\Entity\IgnoredByNamespace'
+  ],
+  disallowed_classes: [
+    'App\Entity\IgnoredByClass'
+  ]
+```
 ## Add IdlabLoggable attribute
 
-    Import : 
-    use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
+```php
+Import : 
+use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
 
-    #[IdlabLoggable]
-    public ?string $value = null;
-
+#[IdlabLoggable]
+public ?string $value = null;
+```
