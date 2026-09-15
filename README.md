@@ -1,5 +1,7 @@
 # Idlab Loggable bundle
 
+This bundle supports Symfony 6.4, 7.x, and 8.x on PHP 8.2 or newer. Symfony 8 requires PHP 8.4 or newer.
+
 ## Configuration in doctrine.yaml
 
 To set under the wished connection configuration :
@@ -30,5 +32,4 @@ You can add a config file name "idlab_loggable.yaml" in config/packages in you S
 
     #[IdlabLoggable]
     public ?string $value = null;
-
 
