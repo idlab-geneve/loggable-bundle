@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## [2.0.1] - 2026-09-15
+
+- fix broken configuration
+
 ## [2.0.0] - 2026-09-15
 
 - [BC Break] Remove `lexik/jwt-authentication-bundle` dependency

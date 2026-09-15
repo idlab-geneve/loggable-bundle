@@ -16,7 +16,6 @@ class Configuration implements ConfigurationInterface
             // Enabled or disabled
             ?->booleanNode('enabled')
             ->defaultTrue()
-            ->isRequired()
             ->end()
             // Connection name
             ?->scalarNode('logs_target_connection_name')
