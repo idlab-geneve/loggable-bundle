@@ -40,3 +40,21 @@ use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
 #[IdlabLoggable]
 public ?string $value = null;
 ```
+
+## Deprecated accessors
+
+Version 2 renamed the log entry properties and database columns from
+`createdAt`/`createdBy` to `loggedAt`/`username`. The old accessors remain
+available for compatibility but are deprecated:
+
+| Deprecated | Use instead |
+| --- | --- |
+| `getCreatedAt()` | `getLoggedAt()` |
+| `getCreatedBy()` | `getUsername()` |
+
+Update application code to use the replacement methods. The deprecated
+accessors may be removed in a future major version.
+
+`EntityLogEntry` is immutable after construction. Version 2 removes all
+setters from the entity so persisted audit records cannot be changed through
+the entity API. Doctrine can hydrate the private fields without setters.

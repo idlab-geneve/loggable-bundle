@@ -9,7 +9,6 @@ use Idlab\Loggable\Config\IdlabLoggableConfig;
 use Idlab\Loggable\Entity\EntityLogEntry;
 use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
-use Doctrine\Common\Util\ClassUtils;
 use Doctrine\ORM\EntityNotFoundException;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostPersistEventArgs;
@@ -19,6 +18,7 @@ use Doctrine\ORM\Events;
 use Doctrine\ORM\UnitOfWork;
 use Doctrine\Persistence\ManagerRegistry;
 use Doctrine\Persistence\ObjectManager;
+use Doctrine\Persistence\Proxy;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
@@ -34,6 +34,7 @@ class EntityLogEntryListener
     private ObjectManager $logsEntityManager;
 
     private ?string $identifierConnectedUser;
+    private ?string $identifierConnectedUserId;
     private ?string $impersonatedBy;
 
     private bool $processingLogs = false;
@@ -48,7 +49,16 @@ class EntityLogEntryListener
         public readonly TokenStorageInterface    $tokenStorageInterface,
     ) {
         $this->logsEntityManager = $this->registry->getManager($this->config->loginTargetConnectionName);
-        $this->identifierConnectedUser = $this->security?->getUser()?->getUserIdentifier();
+        $connectedUser = $this->security?->getUser();
+        $this->identifierConnectedUser = $connectedUser?->getUserIdentifier();
+        $this->identifierConnectedUserId = null;
+
+        if (is_object($connectedUser)) {
+            $userObjectManager = $this->registry->getManagerForClass($this->getObjectClassName($connectedUser));
+            if ($userObjectManager) {
+                $this->identifierConnectedUserId = $this->getObjectIdentifier($userObjectManager, $connectedUser);
+            }
+        }
 
         // Save the original user if current impersonation and save connected user
         $this->impersonatedBy = null;
@@ -77,6 +87,50 @@ class EntityLogEntryListener
             [EntityLogEntry::class],
             $this->config->disallowedClasses
         );
+    }
+
+    private function getObjectClassName(object $object): string
+    {
+        $className = get_class($object);
+
+        return $object instanceof Proxy ? (get_parent_class($object) ?: $className) : $className;
+    }
+
+    /**
+     * Get the identifier from Doctrine metadata so entities do not need a
+     * getId() accessor. This also works for mapped private/protected fields.
+     */
+    private function getObjectIdentifier(ObjectManager $objectManager, object $object): ?string
+    {
+        $className = $this->getObjectClassName($object);
+        $identifiers = $objectManager->getClassMetadata($className)->getIdentifierValues($object);
+
+        if (count($identifiers) === 0) {
+            return null;
+        }
+
+        $identifiers = array_map(
+            fn(mixed $identifier): string => $this->formatIdentifierValue($objectManager, $identifier),
+            $identifiers,
+        );
+
+        return implode('-', $identifiers);
+    }
+
+    private function formatIdentifierValue(ObjectManager $objectManager, mixed $identifier): string
+    {
+        if (is_object($identifier)) {
+            return $this->getObjectIdentifier($objectManager, $identifier) ?? '';
+        }
+
+        if (is_array($identifier)) {
+            return implode('-', array_map(
+                fn(mixed $value): string => $this->formatIdentifierValue($objectManager, $value),
+                $identifier,
+            ));
+        }
+
+        return (string) $identifier;
     }
 
     /*
@@ -123,17 +177,14 @@ class EntityLogEntryListener
         return count($idlabLoggableAttributes) > 0;
     }
 
-    private function getIdentifiersFromCollection(array $values): array
+    private function getIdentifiersFromCollection(ObjectManager $objectManager, array $values): array
     {
         $identifiers = [];
         foreach ($values as $value) {
-            $collectionItemClassName = $value;
-            if (method_exists($collectionItemClassName, 'getId')) {
-                $identifiers[] = $value->getId();
-            } elseif (method_exists($collectionItemClassName, 'getUuid')) {
-                $identifiers[] = $value->getUuid();
-            } elseif (method_exists($collectionItemClassName, '__toString')) {
-                $identifiers[] = $value->__toString();
+            if (is_object($value)) {
+                $identifiers[] = $this->getObjectIdentifier($objectManager, $value);
+            } elseif (is_scalar($value) || null === $value) {
+                $identifiers[] = $value;
             } else {
                 $identifiers[] = $value;
             }
@@ -158,17 +209,17 @@ class EntityLogEntryListener
                 $insertDiff = $collection->getInsertDiff();
                 $deleteDiff = $collection->getDeleteDiff();
                 if ($insertDiff && count($insertDiff) > 0) {
-                    $data[$fieldName]['__inserted__'] = $this->getIdentifiersFromCollection($insertDiff);
+                    $data[$fieldName]['__inserted__'] = $this->getIdentifiersFromCollection($defaultObjectManager, $insertDiff);
                 }
                 if ($deleteDiff && count($deleteDiff) > 0) {
-                    $data[$fieldName]['__removed__'] = $this->getIdentifiersFromCollection($deleteDiff);
+                    $data[$fieldName]['__removed__'] = $this->getIdentifiersFromCollection($defaultObjectManager, $deleteDiff);
                 }
             }
 
             if (count($data) > 0) {
                 $this->pendingLogs[] = [
                     'action' => EntityLogEntry::ACTION_UPDATE,
-                    'currentObjectId' => $currentObject->getId(),
+                    'currentObjectId' => $this->getObjectIdentifier($defaultObjectManager, $currentObject),
                     'currentObjectClassName' => $className,
                     'data' => $data,
                     'collectionAction' => EntityLogEntry::ACTION_UPDATE,
@@ -206,7 +257,7 @@ class EntityLogEntryListener
         if (count($data) > 0) {
             $this->pendingLogs[] = [
                 'action' => EntityLogEntry::ACTION_CREATE,
-                'currentObjectId' => $currentObject->getId(),
+                'currentObjectId' => $this->getObjectIdentifier($defaultObjectManager, $currentObject),
                 'currentObjectClassName' => $className,
                 'data' => $data,
                 'collectionAction' => null,
@@ -244,7 +295,7 @@ class EntityLogEntryListener
             if (count($data) > 0) {
                 $this->pendingLogs[] = [
                     'action' => EntityLogEntry::ACTION_UPDATE,
-                    'currentObjectId' => $currentObject->getId(),
+                    'currentObjectId' => $this->getObjectIdentifier($defaultObjectManager, $currentObject),
                     'currentObjectClassName' => $className,
                     'data' => $data,
                     'collectionAction' => null,
@@ -275,7 +326,7 @@ class EntityLogEntryListener
         }
 
         $oid = spl_object_id($currentObject);
-        $this->removedObjectIds[$oid] = $currentObject->getId() ?: null;
+        $this->removedObjectIds[$oid] = $this->getObjectIdentifier($args->getObjectManager(), $currentObject) ?: null;
     }
 
     /*
@@ -350,7 +401,7 @@ class EntityLogEntryListener
             if (!$this->supportProperty($fieldName, $ownerClassName, $defaultObjectManager->getClassMetadata($ownerClassName))) {
                 continue;
             }
-            $ownerId = $owner->getId();
+            $ownerId = $this->getObjectIdentifier($defaultObjectManager, $owner);
             $scheduledCollectionDeletionsByEntity[$ownerId]['entity'] = $owner;
             $scheduledCollectionDeletionsByEntity[$ownerId]['collections'][] = $collection;
         }
@@ -370,7 +421,7 @@ class EntityLogEntryListener
 
                 $this->pendingLogs[] = [
                     'action' => EntityLogEntry::ACTION_UPDATE,
-                    'currentObjectId' => $entity->getId(),
+                    'currentObjectId' => $this->getObjectIdentifier($defaultObjectManager, $entity),
                     'currentObjectClassName' => get_class($entity),
                     'data' => $dataForDeletions,
                     'collectionAction' => EntityLogEntry::ACTION_REMOVE,
@@ -394,13 +445,14 @@ class EntityLogEntryListener
         if (count($this->pendingLogs) > 0) {
             foreach ($this->pendingLogs as $pendingLog) {
                 $this->logsEntityManager->persist(new EntityLogEntry(
-                    $pendingLog['action'] ?? null,
-                    $this->identifierConnectedUser ?? null,
-                    $pendingLog['currentObjectId'] ?? null,
-                    $pendingLog['currentObjectClassName'] ?? null,
-                    $pendingLog['data'] ?? null,
-                    $this->impersonatedBy ?? null,
-                    $pendingLog['collectionAction'] ?? null,
+                    action: $pendingLog['action'] ?? throw new \LogicException('A pending log is missing its action.'),
+                    username: $this->identifierConnectedUser ?? 'anonymous',
+                    userId: $this->identifierConnectedUserId ?? 'anonymous',
+                    objectId: $pendingLog['currentObjectId'] ?? throw new \LogicException('A pending log is missing its object identifier.'),
+                    objectClass: $pendingLog['currentObjectClassName'] ?? throw new \LogicException('A pending log is missing its object class.'),
+                    data: $pendingLog['data'] ?? null,
+                    impersonatedBy: $this->impersonatedBy ?? null,
+                    collectionAction: $pendingLog['collectionAction'] ?? null,
                 ));
             }
         }
@@ -472,7 +524,7 @@ class EntityLogEntryListener
             // Doctrine entity (proxy or not)
             if (is_object($value) && $uow->isInIdentityMap($value) && $uow->getEntityIdentifier($value)) {
                 return [
-                    '__entity__' => ClassUtils::getClass($value),
+                    '__entity__' => $this->getObjectClassName($value),
                     'id' => $uow->getEntityIdentifier($value),
                 ];
             }
