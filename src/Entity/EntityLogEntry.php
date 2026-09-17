@@ -6,6 +6,11 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'entity_log_entries')]
+#[ORM\Index(name: 'idx_log_class_lookup', columns: ['object_class'])]
+#[ORM\Index(name: 'idx_log_date_lookup', columns: ['logged_at'])]
+#[ORM\Index(name: 'idx_log_username_lookup', columns: ['username'])]
+#[ORM\Index(name: 'idx_log_user_id_lookup', columns: ['user_id'])]
+#[ORM\Index(name: 'idx_log_id_lookup', columns: ['object_class', 'object_id'])]
 class EntityLogEntry
 {
     public const ACTION_CREATE = 'create';
@@ -18,45 +23,50 @@ class EntityLogEntry
     private ?int $id = null;
 
     #[ORM\Column(type: 'string', length: 8, nullable: false)]
-    protected ?string $action;
+    protected string $action;
 
-    #[ORM\Column(type: 'string', length: 8, nullable: true)]
+    #[ORM\Column(name: 'collection_action', type: 'string', length: 8, nullable: true)]
     protected ?string $collectionAction;
 
-    #[ORM\Column(type: 'integer', nullable: false)]
-    protected ?int $objectId;
+    #[ORM\Column(name: 'object_id', type: 'string', length: 64, nullable: false)]
+    protected string $objectId;
 
-    #[ORM\Column(type: 'string', nullable: false)]
-    protected ?string $objectClass;
+    #[ORM\Column(name: 'object_class', type: 'string', nullable: false)]
+    protected string $objectClass;
 
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $data;
 
-    #[ORM\Column(type: 'datetime_immutable', nullable: false)]
-    private \DateTimeImmutable $createdAt;
+    #[ORM\Column(name: 'logged_at', type: 'datetime_immutable', nullable: false)]
+    private \DateTimeImmutable $loggedAt;
 
     #[ORM\Column(type: 'string', nullable: false)]
-    private ?string $createdBy;
+    private string $username;
 
-    #[ORM\Column(type: 'string', nullable: true)]
+    #[ORM\Column(name: 'user_id', type: 'string', length: 64, nullable: false)]
+    private string $userId;
+
+    #[ORM\Column(name: 'impersonated_by', type: 'string', nullable: true)]
     private ?string $impersonatedBy;
 
     public function __construct(
         string $action,
-        ?string $createdBy,
-        int $objectId,
+        string $username,
+        string $userId,
+        string $objectId,
         string $objectClass,
         ?array $data = null,
         ?string $impersonatedBy = null,
         ?string $collectionAction = null
     ) {
-        $this->createdAt      = new \DateTimeImmutable();
-        $this->action         = $action;
-        $this->createdBy      = $createdBy ?: 'anonymous';
-        $this->data           = $data;
-        $this->objectId       = $objectId;
-        $this->objectClass    = $objectClass;
-        $this->impersonatedBy = $impersonatedBy;
+        $this->loggedAt         = new \DateTimeImmutable();
+        $this->action           = $action;
+        $this->username         = $username;
+        $this->userId           = $userId;
+        $this->objectId         = $objectId;
+        $this->objectClass      = $objectClass;
+        $this->data             = $data;
+        $this->impersonatedBy   = $impersonatedBy;
         $this->collectionAction = $collectionAction;
     }
 
@@ -65,14 +75,9 @@ class EntityLogEntry
         return $this->id;
     }
 
-    public function getAction(): ?string
+    public function getAction(): string
     {
         return $this->action;
-    }
-
-    public function setAction(?string $action): void
-    {
-        $this->action = $action;
     }
 
     public function getCollectionAction(): ?string
@@ -80,29 +85,14 @@ class EntityLogEntry
         return $this->collectionAction;
     }
 
-    public function setCollectionAction(?string $collectionAction): void
-    {
-        $this->collectionAction = $collectionAction;
-    }
-
-    public function getObjectId(): ?string
+    public function getObjectId(): string
     {
         return $this->objectId;
     }
 
-    public function setObjectId(?string $objectId): void
-    {
-        $this->objectId = $objectId;
-    }
-
-    public function getObjectClass(): ?string
+    public function getObjectClass(): string
     {
         return $this->objectClass;
-    }
-
-    public function setObjectClass(?string $objectClass): void
-    {
-        $this->objectClass = $objectClass;
     }
 
     public function getData(): ?array
@@ -110,38 +100,39 @@ class EntityLogEntry
         return $this->data;
     }
 
-    public function setData(?array $data): void
+    public function getLoggedAt(): \DateTimeImmutable
     {
-        $this->data = $data;
+        return $this->loggedAt;
     }
 
+    /**
+     * @deprecated since 2.0, use getLoggedAt() instead.
+     */
     public function getCreatedAt(): \DateTimeImmutable
     {
-        return $this->createdAt;
+        return $this->getLoggedAt();
     }
 
-    public function setCreatedAt(\DateTimeImmutable $createdAt): void
+    public function getUsername(): string
     {
-        $this->createdAt = $createdAt;
+        return $this->username;
     }
 
+    /**
+     * @deprecated since 2.0, use getUsername() instead.
+     */
     public function getCreatedBy(): string
     {
-        return $this->createdBy;
+        return $this->getUsername();
     }
 
-    public function setCreatedBy(?string $createdBy): void
+    public function getUserId(): string
     {
-        $this->createdBy = $createdBy;
+        return $this->userId;
     }
 
     public function getImpersonatedBy(): ?string
     {
         return $this->impersonatedBy;
-    }
-
-    public function setImpersonatedBy(?string $impersonatedBy): void
-    {
-        $this->impersonatedBy = $impersonatedBy;
     }
 }

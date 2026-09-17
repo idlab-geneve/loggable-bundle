@@ -7,6 +7,7 @@ use Doctrine\ORM\Tools\SchemaTool;
 use Idlab\Loggable\Entity\EntityLogEntry;
 use Idlab\Loggable\Tests\Entity\DummyEntity;
 use Idlab\Loggable\Tests\Entity\DummyUser;
+use Idlab\Loggable\Tests\Entity\ClassLoggedEntity;
 use Idlab\Loggable\Tests\Entity\IgnoredByNamespace\DummyIgnored;
 use Idlab\Loggable\Tests\Entity\OtherDummyIgnoredByClass;
 use Idlab\Loggable\Tests\Entity\OtherDummyWithoutLoggedProperty;
@@ -54,6 +55,27 @@ class EntityLogEntryListenerTest extends TestCase
         $this->assertEquals(DummyEntity::class, $logEntry->getObjectClass());
         $this->assertEquals('create', $logEntry->getAction());
         $this->assertEquals('idlab_test', $logEntry->getCreatedBy());
+    }
+
+    public function testClassAttributeLogsMappedPropertiesAndHonorsExclusions(): void
+    {
+        $entity = new ClassLoggedEntity();
+        $entity->value = 'logged';
+        $entity->excludedValue = 'excluded';
+        $entity->status = \Idlab\Loggable\Tests\Entity\TestStatus::Published;
+
+        $this->em->persist($entity);
+        $this->em->flush();
+
+        /** @var EntityLogEntry $logEntry */
+        $logEntry = $this->em->getRepository(EntityLogEntry::class)->findOneBy([
+            'objectClass' => ClassLoggedEntity::class,
+        ]);
+
+        $data = $logEntry->getData();
+        $this->assertSame('logged', $data['value']);
+        $this->assertSame('published', $data['status']);
+        $this->assertArrayNotHasKey('excludedValue', $data);
     }
 
     public function testIgnoredNamespaces(): void

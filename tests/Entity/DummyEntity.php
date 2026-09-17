@@ -15,8 +15,4 @@ class DummyEntity
     #[IdlabLoggable]
     public ?string $value = null;
 
-    public function getId(): ?int
-    {
-        return $this->id;
-    }
 }
