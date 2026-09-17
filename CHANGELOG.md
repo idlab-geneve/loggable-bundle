@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## [2.1.1] - 2026-09-17
+
+- fix version in composer.json
+
 ## [2.1.0] - 2026-09-17
 
 - Fix broken configuration

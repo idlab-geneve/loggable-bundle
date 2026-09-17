@@ -1,7 +1,7 @@
 {
     "name": "idlab/loggable",
     "description": "Allows you to log updates occurring on entities",
-    "version": "2.0.0",
+    "version": "2.1.1",
     "type": "symfony-bundle",
     "license": "MIT",
     "authors": [
