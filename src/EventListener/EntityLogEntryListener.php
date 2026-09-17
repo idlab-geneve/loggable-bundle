@@ -8,6 +8,7 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Idlab\Loggable\Config\IdlabLoggableConfig;
 use Idlab\Loggable\Entity\EntityLogEntry;
 use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
+use Idlab\Loggable\Mapping\Attributes\IdlabLoggableExclude;
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
 use Doctrine\ORM\EntityNotFoundException;
 use Doctrine\ORM\Event\OnFlushEventArgs;
@@ -96,6 +97,11 @@ class EntityLogEntryListener
         return $object instanceof Proxy ? (get_parent_class($object) ?: $className) : $className;
     }
 
+    private function hasClassLoggingAttribute(string $className): bool
+    {
+        return count((new \ReflectionClass($className))->getAttributes(IdlabLoggable::class)) > 0;
+    }
+
     /**
      * Get the identifier from Doctrine metadata so entities do not need a
      * getId() accessor. This also works for mapped private/protected fields.
@@ -172,6 +178,15 @@ class EntityLogEntryListener
         if (is_null($property)) {
             return false;
         }
+
+        if (count($property->getAttributes(IdlabLoggableExclude::class)) > 0) {
+            return false;
+        }
+
+        if ($this->hasClassLoggingAttribute($evaluatedClassName)) {
+            return true;
+        }
+
         $idlabLoggableAttributes = $property->getAttributes(IdlabLoggable::class);
 
         return count($idlabLoggableAttributes) > 0;
@@ -197,7 +212,7 @@ class EntityLogEntryListener
         try {
             $uow = $defaultObjectManager->getUnitOfWork();
             $oid = spl_object_id($currentObject);
-            $className = get_class($currentObject);
+            $className = $this->getObjectClassName($currentObject);
             $pendingLogsCollectionUpdates = $this->pendingLogsCollectionUpdated[$oid] ?? [];
 
             $data = [];
@@ -243,7 +258,7 @@ class EntityLogEntryListener
         }
 
         $currentObject = $args->getObject();
-        $className = get_class($currentObject);
+        $className = $this->getObjectClassName($currentObject);
 
         if (!$this->supportEntity($className)) {
             return;
@@ -281,7 +296,7 @@ class EntityLogEntryListener
 
         try {
             $currentObject = $args->getObject();
-            $className = get_class($currentObject);
+            $className = $this->getObjectClassName($currentObject);
 
             if (!$this->supportEntity($className)) {
                 return;
@@ -319,7 +334,7 @@ class EntityLogEntryListener
         }
 
         $currentObject = $args->getObject();
-        $className = get_class($currentObject);
+        $className = $this->getObjectClassName($currentObject);
 
         if (!$this->supportEntity($className)) {
             return;
@@ -339,7 +354,7 @@ class EntityLogEntryListener
         }
 
         $currentObject = $args->getObject();
-        $className = get_class($currentObject);
+        $className = $this->getObjectClassName($currentObject);
 
         if (!$this->supportEntity($className)) {
             return;
@@ -378,7 +393,7 @@ class EntityLogEntryListener
             if (!$owner) {
                 continue;
             }
-            $ownerClassName = get_class($owner);
+            $ownerClassName = $this->getObjectClassName($owner);
             if (!$this->supportEntity($ownerClassName)) {
                 continue;
             }
@@ -393,7 +408,7 @@ class EntityLogEntryListener
             if (!$owner) {
                 continue;
             }
-            $ownerClassName = get_class($owner);
+            $ownerClassName = $this->getObjectClassName($owner);
             if (!$this->supportEntity($ownerClassName)) {
                 continue;
             }
@@ -422,7 +437,7 @@ class EntityLogEntryListener
                 $this->pendingLogs[] = [
                     'action' => EntityLogEntry::ACTION_UPDATE,
                     'currentObjectId' => $this->getObjectIdentifier($defaultObjectManager, $entity),
-                    'currentObjectClassName' => get_class($entity),
+                    'currentObjectClassName' => $this->getObjectClassName($entity),
                     'data' => $dataForDeletions,
                     'collectionAction' => EntityLogEntry::ACTION_REMOVE,
                 ];
@@ -511,6 +526,14 @@ class EntityLogEntryListener
                 return null;
             }
 
+            if ($value instanceof \BackedEnum) {
+                return $value->value;
+            }
+
+            if ($value instanceof \UnitEnum) {
+                return $value->name;
+            }
+
             // Numeric value
             if (is_numeric($value)) {
                 return (string) +$value;
@@ -564,6 +587,14 @@ class EntityLogEntryListener
         // "Flat" value
         if (null === $value || '' === $value || is_numeric($value)) {
             return $value;
+        }
+
+        if ($value instanceof \BackedEnum) {
+            return $value->value;
+        }
+
+        if ($value instanceof \UnitEnum) {
+            return $value->name;
         }
 
         if ($value instanceof \DateTimeInterface) {

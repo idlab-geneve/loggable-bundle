@@ -1,9 +1,15 @@
 # CHANGELOG
 
-## [2.0.1] - 2026-09-15
+## [2.1.0] - 2026-09-17
 
-- fix broken configuration
-- better README.md
+- Fix broken configuration
+- Improve README and add 1.x to 2.x upgrade guidance, including schema migration warnings
+- Add class-level `#[IdlabLoggable]` support for logging all mapped properties
+- Add `#[IdlabLoggableExclude]` for excluding individual properties
+- Support backed and pure enum values in change logs
+- Resolve entity identifiers through Doctrine metadata, including public and composite identifiers
+- Make `EntityLogEntry` immutable after construction while retaining deprecated legacy getters
+- Explicitly map log columns and indexes to stable snake_case database names
 
 ## [2.0.0] - 2026-09-15
 

@@ -25,28 +25,28 @@ class EntityLogEntry
     #[ORM\Column(type: 'string', length: 8, nullable: false)]
     protected string $action;
 
-    #[ORM\Column(type: 'string', length: 8, nullable: true)]
+    #[ORM\Column(name: 'collection_action', type: 'string', length: 8, nullable: true)]
     protected ?string $collectionAction;
 
-    #[ORM\Column(type: 'string', length: 64, nullable: false)]
+    #[ORM\Column(name: 'object_id', type: 'string', length: 64, nullable: false)]
     protected string $objectId;
 
-    #[ORM\Column(type: 'string', nullable: false)]
+    #[ORM\Column(name: 'object_class', type: 'string', nullable: false)]
     protected string $objectClass;
 
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $data;
 
-    #[ORM\Column(type: 'datetime_immutable', nullable: false)]
+    #[ORM\Column(name: 'logged_at', type: 'datetime_immutable', nullable: false)]
     private \DateTimeImmutable $loggedAt;
 
     #[ORM\Column(type: 'string', nullable: false)]
     private string $username;
 
-    #[ORM\Column(type: 'string', length: 64, nullable: false)]
+    #[ORM\Column(name: 'user_id', type: 'string', length: 64, nullable: false)]
     private string $userId;
 
-    #[ORM\Column(type: 'string', nullable: true)]
+    #[ORM\Column(name: 'impersonated_by', type: 'string', nullable: true)]
     private ?string $impersonatedBy;
 
     public function __construct(

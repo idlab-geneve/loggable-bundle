@@ -41,6 +41,28 @@ use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
 public ?string $value = null;
 ```
 
+To log all Doctrine-mapped properties of an entity, put the attribute on the
+class. Exclude individual properties with `IdlabLoggableExclude`:
+
+```php
+use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
+use Idlab\Loggable\Mapping\Attributes\IdlabLoggableExclude;
+
+#[IdlabLoggable]
+class Order
+{
+    private string $status;
+
+    #[IdlabLoggableExclude]
+    private string $internalNote;
+}
+```
+
+Property-level `IdlabLoggable` remains supported for selective logging. A
+property exclusion takes precedence over both class-level and property-level
+logging attributes. Backed enums are logged using their backing value; pure
+enums are logged using their case name.
+
 ## Deprecated accessors
 
 Version 2 renamed the log entry properties and database columns from
