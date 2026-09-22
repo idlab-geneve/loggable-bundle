@@ -2,6 +2,7 @@
 
 namespace Idlab\Loggable\EventListener;
 
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Event\PostUpdateEventArgs;
 use Doctrine\ORM\Mapping\ClassMetadata;
@@ -40,6 +41,7 @@ class EntityLogEntryListener
 
     private bool $processingLogs = false;
     private array $removedObjectIds = [];
+    private array $removedObjectData = [];
     private array $pendingLogsCollectionUpdated = [];
     private array $pendingLogs = [];
 
@@ -342,6 +344,9 @@ class EntityLogEntryListener
 
         $oid = spl_object_id($currentObject);
         $this->removedObjectIds[$oid] = $this->getObjectIdentifier($args->getObjectManager(), $currentObject) ?: null;
+        if ($this->config->snapshotOnDelete) {
+            $this->removedObjectData[$oid] = $this->getSnapshotData($args->getObjectManager(), $currentObject, $className);
+        }
     }
 
     /*
@@ -362,16 +367,18 @@ class EntityLogEntryListener
 
         $oid = spl_object_id($currentObject);
         $removedObjectId = $this->removedObjectIds[$oid] ?? null;
+        $hasSnapshot = array_key_exists($oid, $this->removedObjectData);
 
         $this->pendingLogs[] = [
             'action' => EntityLogEntry::ACTION_REMOVE,
             'currentObjectId' => $removedObjectId,
             'currentObjectClassName' => $className,
-            'data' => null,
+            'data' => $hasSnapshot ? $this->removedObjectData[$oid] : null,
             'collectionAction' => null,
         ];
 
         unset($this->removedObjectIds[$oid]);
+        unset($this->removedObjectData[$oid]);
     }
 
     /**
@@ -511,6 +518,39 @@ class EntityLogEntryListener
         }
 
         return $changeSet;
+    }
+
+    /**
+     * @throws EntityNotFoundException
+     * @throws \JsonException
+     */
+    private function getSnapshotData(ObjectManager $objectManager, object $object, string $className): array
+    {
+        $metadata = $objectManager->getClassMetadata($className);
+        $uow = $objectManager->getUnitOfWork();
+        $originalData = $uow->getOriginalEntityData($object);
+        $data = [];
+
+        foreach (array_merge($metadata->getFieldNames(), $metadata->getAssociationNames()) as $fieldName) {
+            if (!$this->supportProperty($fieldName, $className, $metadata)) {
+                continue;
+            }
+
+            try {
+                $value = $metadata->getFieldValue($object, $fieldName);
+            } catch (\Throwable $exception) {
+                if (!array_key_exists($fieldName, $originalData)) {
+                    throw $exception;
+                }
+
+                $value = $originalData[$fieldName];
+            }
+            $data[$fieldName] = $value instanceof Collection
+                ? $this->getIdentifiersFromCollection($objectManager, $value->getValues())
+                : $this->formatAfterChange($uow, $value);
+        }
+
+        return $data;
     }
 
     /*

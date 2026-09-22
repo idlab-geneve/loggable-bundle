@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## Unreleased
+
+- Add an option to snapshot loggable entity data when an entity is deleted
+
 ## [2.1.1] - 2026-09-17
 
 - fix version in composer.json

@@ -22,6 +22,7 @@ You can add a config file name "idlab_loggable.yaml" in config/packages in you S
 ```yaml
 idlab_loggable:
   enabled: true
+  snapshot_on_delete: false
   logs_target_connection_name: 'default'
   table_prefix: 'example_table_prefix_'
   disallowed_namespaces: [
@@ -31,6 +32,13 @@ idlab_loggable:
     'App\Entity\IgnoredByClass'
   ]
 ```
+
+Set `snapshot_on_delete` to `true` to include a snapshot of all loggable
+properties in the `data` field of remove log entries. Scalar values use the
+same serialization as other log entries; associations are stored by identifier
+and collections as arrays of identifiers. The option defaults to `false`.
+After changing this setting, rebuild or clear the Symfony container cache.
+
 ## Add IdlabLoggable attribute
 
 ```php

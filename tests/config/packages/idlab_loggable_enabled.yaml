@@ -1,5 +1,6 @@
 idlab_loggable:
   enabled: true
+  snapshot_on_delete: true
   disallowed_namespaces: [
     'Idlab\Loggable\Tests\Entity\IgnoredByNamespace'
   ]

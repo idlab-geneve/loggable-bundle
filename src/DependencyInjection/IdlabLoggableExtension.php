@@ -24,6 +24,7 @@ class IdlabLoggableExtension extends Extension
                 $config['table_prefix'] ?? '',
                 $config['disallowed_namespaces'] ?? [],
                 $config['disallowed_classes'] ?? [],
+                $config['snapshot_on_delete'] ?? false,
             ]);
 
             // Define where are the YAML files of the bundle

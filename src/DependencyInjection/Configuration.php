@@ -17,6 +17,10 @@ class Configuration implements ConfigurationInterface
             ?->booleanNode('enabled')
             ->defaultTrue()
             ->end()
+            // Snapshot deleted entities
+            ?->booleanNode('snapshot_on_delete')
+            ->defaultFalse()
+            ->end()
             // Connection name
             ?->scalarNode('logs_target_connection_name')
             ->defaultValue('default')

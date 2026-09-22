@@ -11,6 +11,8 @@ use Idlab\Loggable\Tests\Entity\ClassLoggedEntity;
 use Idlab\Loggable\Tests\Entity\IgnoredByNamespace\DummyIgnored;
 use Idlab\Loggable\Tests\Entity\OtherDummyIgnoredByClass;
 use Idlab\Loggable\Tests\Entity\OtherDummyWithoutLoggedProperty;
+use Idlab\Loggable\Tests\Entity\SnapshotChild;
+use Idlab\Loggable\Tests\Entity\SnapshotEntity;
 use Idlab\Loggable\Tests\Kernel\TestKernel;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
@@ -109,5 +111,39 @@ class EntityLogEntryListenerTest extends TestCase
 
         $logEntries = $this->em->getRepository(EntityLogEntry::class)->findAll();
         $this->assertEmpty($logEntries);
+    }
+
+    public function testDeleteSnapshotContainsLoggableValuesAndAssociationIdentifiers(): void
+    {
+        $child = new SnapshotChild();
+        $entity = new SnapshotEntity();
+        $entity->value = 'before deletion';
+        $entity->child = $child;
+        $entity->children->add($child);
+        $entity->setPrivateValue('private value');
+        $entity->setPrivateChild($child);
+
+        $this->em->persist($child);
+        $this->em->persist($entity);
+        $this->em->flush();
+
+        $entityId = $entity->id;
+        $childId = $child->id;
+        $this->em->remove($entity);
+        $this->em->flush();
+
+        /** @var EntityLogEntry $logEntry */
+        $logEntry = $this->em->getRepository(EntityLogEntry::class)->findOneBy([
+            'action' => EntityLogEntry::ACTION_REMOVE,
+            'objectClass' => SnapshotEntity::class,
+            'objectId' => (string) $entityId,
+        ]);
+
+        $this->assertNotNull($logEntry);
+        $this->assertSame('before deletion', $logEntry->getData()['value']);
+        $this->assertSame(['id' => $childId], $logEntry->getData()['child']);
+        $this->assertSame([(string) $childId], $logEntry->getData()['children']);
+        $this->assertSame('private value', $logEntry->getData()['privateValue']);
+        $this->assertSame(['id' => $childId], $logEntry->getData()['privateChild']);
     }
 }
