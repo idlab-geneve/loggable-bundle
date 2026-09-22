@@ -10,6 +10,7 @@ use Idlab\Loggable\Config\IdlabLoggableConfig;
 use Idlab\Loggable\Entity\EntityLogEntry;
 use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
 use Idlab\Loggable\Mapping\Attributes\IdlabLoggableExclude;
+use Idlab\Loggable\Service\EntitySnapshotter;
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
 use Doctrine\ORM\EntityNotFoundException;
 use Doctrine\ORM\Event\OnFlushEventArgs;
@@ -50,6 +51,7 @@ class EntityLogEntryListener
         private readonly ManagerRegistry         $registry,
         private readonly Security                $security,
         public readonly TokenStorageInterface    $tokenStorageInterface,
+        private readonly EntitySnapshotter       $snapshotter,
     ) {
         $this->logsEntityManager = $this->registry->getManager($this->config->loginTargetConnectionName);
         $connectedUser = $this->security?->getUser();
@@ -345,7 +347,7 @@ class EntityLogEntryListener
         $oid = spl_object_id($currentObject);
         $this->removedObjectIds[$oid] = $this->getObjectIdentifier($args->getObjectManager(), $currentObject) ?: null;
         if ($this->config->snapshotOnDelete) {
-            $this->removedObjectData[$oid] = $this->getSnapshotData($args->getObjectManager(), $currentObject, $className);
+            $this->removedObjectData[$oid] = $this->snapshotter->snapshot($args->getObjectManager(), $currentObject, $className);
         }
     }
 
@@ -518,39 +520,6 @@ class EntityLogEntryListener
         }
 
         return $changeSet;
-    }
-
-    /**
-     * @throws EntityNotFoundException
-     * @throws \JsonException
-     */
-    private function getSnapshotData(ObjectManager $objectManager, object $object, string $className): array
-    {
-        $metadata = $objectManager->getClassMetadata($className);
-        $uow = $objectManager->getUnitOfWork();
-        $originalData = $uow->getOriginalEntityData($object);
-        $data = [];
-
-        foreach (array_merge($metadata->getFieldNames(), $metadata->getAssociationNames()) as $fieldName) {
-            if (!$this->supportProperty($fieldName, $className, $metadata)) {
-                continue;
-            }
-
-            try {
-                $value = $metadata->getFieldValue($object, $fieldName);
-            } catch (\Throwable $exception) {
-                if (!array_key_exists($fieldName, $originalData)) {
-                    throw $exception;
-                }
-
-                $value = $originalData[$fieldName];
-            }
-            $data[$fieldName] = $value instanceof Collection
-                ? $this->getIdentifiersFromCollection($objectManager, $value->getValues())
-                : $this->formatAfterChange($uow, $value);
-        }
-
-        return $data;
     }
 
     /*

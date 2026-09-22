@@ -5,6 +5,7 @@ namespace Idlab\Loggable\Tests\EventListener;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Idlab\Loggable\Entity\EntityLogEntry;
+use Idlab\Loggable\Command\SnapshotCommand;
 use Idlab\Loggable\Tests\Entity\DummyEntity;
 use Idlab\Loggable\Tests\Entity\DummyUser;
 use Idlab\Loggable\Tests\Entity\ClassLoggedEntity;
@@ -16,6 +17,7 @@ use Idlab\Loggable\Tests\Entity\SnapshotEntity;
 use Idlab\Loggable\Tests\Kernel\TestKernel;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
+use Symfony\Component\Console\Tester\CommandTester;
 
 class EntityLogEntryListenerTest extends TestCase
 {
@@ -145,5 +147,87 @@ class EntityLogEntryListenerTest extends TestCase
         $this->assertSame([(string) $childId], $logEntry->getData()['children']);
         $this->assertSame('private value', $logEntry->getData()['privateValue']);
         $this->assertSame(['id' => $childId], $logEntry->getData()['privateChild']);
+    }
+
+    public function testSnapshotCommandCreatesSnapshotForSelectedClass(): void
+    {
+        $child = new SnapshotChild();
+        $entity = new SnapshotEntity();
+        $entity->value = 'command snapshot';
+        $entity->child = $child;
+        $this->em->persist($child);
+        $this->em->persist($entity);
+        $this->em->flush();
+
+        /** @var SnapshotCommand $command */
+        $command = $this->kernel->getContainer()->get('console.command_loader')->get('idlab:loggable:snapshot')->getCommand();
+        $discovery = (new \ReflectionClass($command))->getMethod('discoverClasses');
+        $discovery->setAccessible(true);
+        $classes = $discovery->invoke($command);
+        $index = array_search(SnapshotEntity::class, array_column($classes, 'class'), true);
+        self::assertNotFalse($index);
+
+        $tester = new CommandTester($command);
+        $tester->execute(['selection' => (string) $index]);
+
+        self::assertSame(0, $tester->getStatusCode());
+        $logEntry = $this->em->getRepository(EntityLogEntry::class)->findOneBy([
+            'action' => EntityLogEntry::ACTION_SNAPSHOT,
+            'objectClass' => SnapshotEntity::class,
+            'objectId' => (string) $entity->id,
+        ]);
+        self::assertNotNull($logEntry);
+        self::assertSame('command snapshot', $logEntry->getData()['value']);
+        self::assertStringContainsString('1 snapshots created', $tester->getDisplay());
+    }
+
+    public function testSnapshotCommandFiltersCreatedAndUnchangedEntities(): void
+    {
+        $entity = new SnapshotEntity();
+        $entity->value = 'initial';
+        $this->em->persist($entity);
+        $this->em->flush();
+
+        $command = $this->getSnapshotCommand();
+        $index = $this->getSnapshotEntityIndex($command);
+
+        $tester = new CommandTester($command);
+        $tester->execute(['selection' => (string) $index, '--exclude-created' => true]);
+        self::assertSame(0, $tester->getStatusCode());
+        self::assertNull($this->em->getRepository(EntityLogEntry::class)->findOneBy([
+            'action' => EntityLogEntry::ACTION_SNAPSHOT,
+            'objectClass' => SnapshotEntity::class,
+        ]));
+
+        $tester->execute(['selection' => (string) $index]);
+        $tester->execute(['selection' => (string) $index, '--skip-unchanged' => true]);
+        self::assertSame(1, $this->em->getRepository(EntityLogEntry::class)->count([
+            'action' => EntityLogEntry::ACTION_SNAPSHOT,
+            'objectClass' => SnapshotEntity::class,
+        ]));
+
+        $entity->value = 'changed';
+        $this->em->flush();
+        $tester->execute(['selection' => (string) $index, '--skip-unchanged' => true]);
+        self::assertSame(2, $this->em->getRepository(EntityLogEntry::class)->count([
+            'action' => EntityLogEntry::ACTION_SNAPSHOT,
+            'objectClass' => SnapshotEntity::class,
+        ]));
+    }
+
+    private function getSnapshotCommand(): SnapshotCommand
+    {
+        return $this->kernel->getContainer()->get('console.command_loader')->get('idlab:loggable:snapshot')->getCommand();
+    }
+
+    private function getSnapshotEntityIndex(SnapshotCommand $command): int
+    {
+        $method = (new \ReflectionClass($command))->getMethod('discoverClasses');
+        $classes = $method->invoke($command);
+        $index = array_search(SnapshotEntity::class, array_column($classes, 'class'), true);
+
+        self::assertIsInt($index);
+
+        return $index;
     }
 }

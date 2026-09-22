@@ -39,6 +39,21 @@ same serialization as other log entries; associations are stored by identifier
 and collections as arrays of identifiers. The option defaults to `false`.
 After changing this setting, rebuild or clear the Symfony container cache.
 
+## Create entity snapshots
+
+Use the `idlab:loggable:snapshot` command to create a snapshot log for every
+persisted entity of one or more selected loggable classes:
+
+```bash
+php bin/console idlab:loggable:snapshot 0,2-4
+```
+
+Without a selection, the command lists the supported classes and asks for a
+selection. Use `--exclude-created` to skip entities that already have a create
+log, or `--skip-unchanged` to skip entities whose latest snapshot is unchanged.
+Selections are zero-indexed and support comma-separated indexes and inclusive
+ranges.
+
 ## Add IdlabLoggable attribute
 
 ```php

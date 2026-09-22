@@ -16,6 +16,7 @@ class EntityLogEntry
     public const ACTION_CREATE = 'create';
     public const ACTION_UPDATE = 'update';
     public const ACTION_REMOVE = 'remove';
+    public const ACTION_SNAPSHOT = 'snapshot';
 
     #[ORM\Id]
     #[ORM\Column(type: 'integer')]

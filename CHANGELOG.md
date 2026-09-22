@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Add an option to snapshot loggable entity data when an entity is deleted
+- Add the `idlab:loggable:snapshot` command for creating snapshots of persisted entities
 
 ## [2.1.1] - 2026-09-17
 
