@@ -14,6 +14,25 @@ final class SnapshotCommandTest extends TestCase
         self::assertSame('idlab:loggable:snapshot', SnapshotCommand::getDefaultName());
     }
 
+    public function testClassesAreSortedByClassAndManager(): void
+    {
+        $command = (new \ReflectionClass(SnapshotCommand::class))->newInstanceWithoutConstructor();
+        $method = (new \ReflectionClass($command))->getMethod('sortClasses');
+        $method->setAccessible(true);
+
+        $classes = [
+            ['class' => 'Zed\\Entity', 'manager' => 'default', 'label' => 'Zed\\Entity'],
+            ['class' => 'App\\Entity', 'manager' => 'secondary', 'label' => 'App\\Entity (secondary)'],
+            ['class' => 'App\\Entity', 'manager' => 'default', 'label' => 'App\\Entity (default)'],
+        ];
+
+        self::assertSame([
+            $classes[2],
+            $classes[1],
+            $classes[0],
+        ], $method->invoke($command, $classes));
+    }
+
     /** @dataProvider validSelections */
     public function testSelectionParsing(string $selection, array $expected): void
     {

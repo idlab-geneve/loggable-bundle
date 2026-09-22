@@ -11,5 +11,6 @@ class IdlabLoggableConfig
         public readonly array $disallowedNamespaces,
         public readonly array $disallowedClasses,
         public readonly bool $snapshotOnDelete = false,
+        public readonly bool $includeInverseAssociations = false,
     ) {}
 }

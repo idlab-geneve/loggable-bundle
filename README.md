@@ -23,6 +23,7 @@ You can add a config file name "idlab_loggable.yaml" in config/packages in you S
 idlab_loggable:
   enabled: true
   snapshot_on_delete: false
+  include_inverse_associations: false
   logs_target_connection_name: 'default'
   table_prefix: 'example_table_prefix_'
   disallowed_namespaces: [
@@ -38,6 +39,31 @@ properties in the `data` field of remove log entries. Scalar values use the
 same serialization as other log entries; associations are stored by identifier
 and collections as arrays of identifiers. The option defaults to `false`.
 After changing this setting, rebuild or clear the Symfony container cache.
+
+By default, only owning-side Doctrine associations are stored. Inverse
+associations, such as an aggregate's `OneToMany` collection or an inverse
+`ManyToMany` collection, are omitted because they are derived from the owning
+side. Set `include_inverse_associations` to `true` to make inverse associations
+eligible for logging when Doctrine reports them as changed.
+
+Snapshots contain the complete current value of each included association.
+Update logs contain only changes: collection changes are stored as identifier
+diffs under `__inserted__` and `__removed__`, for example:
+
+```json
+{
+  "children": {
+    "__inserted__": ["12"],
+    "__removed__": ["8"]
+  }
+}
+```
+
+Changing an owning-side association does not automatically create a separate
+log for the inverse-side entity. Doctrine persists associations through their
+owning side, so an inverse collection must itself be changed to produce an
+inverse collection update log. The option also does not make Doctrine persist
+changes made only to an inverse side.
 
 ## Create entity snapshots
 

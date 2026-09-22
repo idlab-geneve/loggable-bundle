@@ -44,7 +44,8 @@ final class EntitySnapshotter
         $classLogged = count((new \ReflectionClass($className))->getAttributes(IdlabLoggable::class)) > 0;
 
         foreach (array_merge($metadata->getFieldNames(), $metadata->getAssociationNames()) as $fieldName) {
-            if ($this->supportsProperty($fieldName, $className, $metadata, $classLogged)) {
+            if ($this->supportsAssociation($fieldName, $metadata)
+                && $this->supportsProperty($fieldName, $className, $metadata, $classLogged)) {
                 return true;
             }
         }
@@ -63,7 +64,8 @@ final class EntitySnapshotter
         $data = [];
 
         foreach (array_merge($metadata->getFieldNames(), $metadata->getAssociationNames()) as $fieldName) {
-            if (!$this->supportsProperty($fieldName, $className, $metadata, $classLogged)) {
+            if (!$this->supportsAssociation($fieldName, $metadata)
+                || !$this->supportsProperty($fieldName, $className, $metadata, $classLogged)) {
                 continue;
             }
 
@@ -92,6 +94,16 @@ final class EntitySnapshotter
         }
 
         return implode('-', array_map(fn(mixed $value): string => $this->formatIdentifier($objectManager, $value), $values));
+    }
+
+    public function supportsAssociation(string $fieldName, ClassMetadata $metadata): bool
+    {
+        if (!isset($metadata->associationMappings[$fieldName])) {
+            return true;
+        }
+
+        return $this->config->includeInverseAssociations
+            || ($metadata->associationMappings[$fieldName]['isOwningSide'] ?? true);
     }
 
     private function supportsProperty(string $fieldName, string $className, ClassMetadata $metadata, bool $classLogged): bool

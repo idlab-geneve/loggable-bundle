@@ -31,6 +31,7 @@ class ConfigurationTest extends TestCase
         $this->assertSame('example_table_prefix', $processed['table_prefix']);
         $this->assertFalse($processed['enabled']);
         $this->assertFalse($processed['snapshot_on_delete']);
+        $this->assertFalse($processed['include_inverse_associations']);
     }
 
     public function testDeleteSnapshotCanBeEnabled(): void
@@ -55,5 +56,29 @@ class ConfigurationTest extends TestCase
         $definition = $container->getDefinition(IdlabLoggableConfig::class);
 
         $this->assertTrue($definition->getArgument(5));
+    }
+
+    public function testInverseAssociationsCanBeIncluded(): void
+    {
+        $processor = new Processor();
+        $processed = $processor->processConfiguration(
+            new Configuration(),
+            [['include_inverse_associations' => true]]
+        );
+
+        $this->assertTrue($processed['include_inverse_associations']);
+    }
+
+    public function testInverseAssociationsArePassedToTheContainerConfiguration(): void
+    {
+        $container = new ContainerBuilder();
+
+        (new IdlabLoggableExtension())->load([
+            ['include_inverse_associations' => true],
+        ], $container);
+
+        $definition = $container->getDefinition(IdlabLoggableConfig::class);
+
+        $this->assertTrue($definition->getArgument(6));
     }
 }

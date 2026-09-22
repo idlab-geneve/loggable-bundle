@@ -27,7 +27,7 @@ class SnapshotEntity
     private ?SnapshotChild $privateChild = null;
 
     /** @var Collection<int, SnapshotChild> */
-    #[ORM\ManyToMany(targetEntity: SnapshotChild::class)]
+    #[ORM\ManyToMany(targetEntity: SnapshotChild::class, inversedBy: 'parents')]
     #[ORM\JoinTable(name: 'snapshot_entity_children')]
     public Collection $children;
 

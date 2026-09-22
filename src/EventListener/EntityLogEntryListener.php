@@ -164,6 +164,10 @@ class EntityLogEntryListener
      */
     private function supportProperty(string $evaluatedPropertyName, string $evaluatedClassName, ClassMetadata $meta): bool
     {
+        if (!$this->snapshotter->supportsAssociation($evaluatedPropertyName, $meta)) {
+            return false;
+        }
+
         $property = null;
         if (str_contains($evaluatedPropertyName, '.')) {
             [$embedField, $subField] = explode('.', $evaluatedPropertyName, 2);

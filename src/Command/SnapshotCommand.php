@@ -148,7 +148,17 @@ final class SnapshotCommand extends Command
             }
         }
 
-        return $discovered;
+        return $this->sortClasses($discovered);
+    }
+
+    /** @param list<array{class: string, manager: string, label: string}> $classes */
+    private function sortClasses(array $classes): array
+    {
+        usort($classes, static function (array $left, array $right): int {
+            return [$left['class'], $left['manager']] <=> [$right['class'], $right['manager']];
+        });
+
+        return $classes;
     }
 
     /** @param list<array{class: string, manager: string, label: string}> $classes */
