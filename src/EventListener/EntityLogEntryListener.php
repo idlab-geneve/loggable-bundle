@@ -2,6 +2,7 @@
 
 namespace Idlab\Loggable\EventListener;
 
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Event\PostUpdateEventArgs;
 use Doctrine\ORM\Mapping\ClassMetadata;
@@ -9,6 +10,7 @@ use Idlab\Loggable\Config\IdlabLoggableConfig;
 use Idlab\Loggable\Entity\EntityLogEntry;
 use Idlab\Loggable\Mapping\Attributes\IdlabLoggable;
 use Idlab\Loggable\Mapping\Attributes\IdlabLoggableExclude;
+use Idlab\Loggable\Service\EntitySnapshotter;
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
 use Doctrine\ORM\EntityNotFoundException;
 use Doctrine\ORM\Event\OnFlushEventArgs;
@@ -40,6 +42,7 @@ class EntityLogEntryListener
 
     private bool $processingLogs = false;
     private array $removedObjectIds = [];
+    private array $removedObjectData = [];
     private array $pendingLogsCollectionUpdated = [];
     private array $pendingLogs = [];
 
@@ -48,6 +51,7 @@ class EntityLogEntryListener
         private readonly ManagerRegistry         $registry,
         private readonly Security                $security,
         public readonly TokenStorageInterface    $tokenStorageInterface,
+        private readonly EntitySnapshotter       $snapshotter,
     ) {
         $this->logsEntityManager = $this->registry->getManager($this->config->loginTargetConnectionName);
         $connectedUser = $this->security?->getUser();
@@ -160,6 +164,10 @@ class EntityLogEntryListener
      */
     private function supportProperty(string $evaluatedPropertyName, string $evaluatedClassName, ClassMetadata $meta): bool
     {
+        if (!$this->snapshotter->supportsAssociation($evaluatedPropertyName, $meta)) {
+            return false;
+        }
+
         $property = null;
         if (str_contains($evaluatedPropertyName, '.')) {
             [$embedField, $subField] = explode('.', $evaluatedPropertyName, 2);
@@ -342,6 +350,9 @@ class EntityLogEntryListener
 
         $oid = spl_object_id($currentObject);
         $this->removedObjectIds[$oid] = $this->getObjectIdentifier($args->getObjectManager(), $currentObject) ?: null;
+        if ($this->config->snapshotOnDelete) {
+            $this->removedObjectData[$oid] = $this->snapshotter->snapshot($args->getObjectManager(), $currentObject, $className);
+        }
     }
 
     /*
@@ -362,16 +373,18 @@ class EntityLogEntryListener
 
         $oid = spl_object_id($currentObject);
         $removedObjectId = $this->removedObjectIds[$oid] ?? null;
+        $hasSnapshot = array_key_exists($oid, $this->removedObjectData);
 
         $this->pendingLogs[] = [
             'action' => EntityLogEntry::ACTION_REMOVE,
             'currentObjectId' => $removedObjectId,
             'currentObjectClassName' => $className,
-            'data' => null,
+            'data' => $hasSnapshot ? $this->removedObjectData[$oid] : null,
             'collectionAction' => null,
         ];
 
         unset($this->removedObjectIds[$oid]);
+        unset($this->removedObjectData[$oid]);
     }
 
     /**

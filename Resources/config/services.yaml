@@ -5,3 +5,5 @@ services:
 
   Idlab\Loggable\EventListener\EntityLogEntryListener: ~
   Idlab\Loggable\EventListener\TablePrefixListener: ~
+  Idlab\Loggable\Service\EntitySnapshotter: ~
+  Idlab\Loggable\Command\SnapshotCommand: ~

@@ -17,6 +17,14 @@ class Configuration implements ConfigurationInterface
             ?->booleanNode('enabled')
             ->defaultTrue()
             ->end()
+            // Snapshot deleted entities
+            ?->booleanNode('snapshot_on_delete')
+            ->defaultFalse()
+            ->end()
+            // Include inverse-side Doctrine associations
+            ?->booleanNode('include_inverse_associations')
+            ->defaultFalse()
+            ->end()
             // Connection name
             ?->scalarNode('logs_target_connection_name')
             ->defaultValue('default')
