@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [2.2.0] - 2026-09-29
+
 - Add an option to snapshot loggable entity data when an entity is deleted
 - Add the `idlab:loggable:snapshot` command for creating snapshots of persisted entities
 - Add `include_inverse_associations` to optionally log inverse Doctrine associations
